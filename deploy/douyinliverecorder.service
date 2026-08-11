@@ -1,0 +1,42 @@
+[Unit]
+Description=DouyinLiveRecorder - 多平台直播录制服务（含 WebUI）
+Documentation=https://github.com/ihmily/DouyinLiveRecorder
+# 等待网络就绪后再启动（录制依赖网络）
+After=network-online.target
+Wants=network-online.target
+# 崩溃自动重启（5 秒后），60 秒内最多重启 5 次
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=douyinrec
+Group=douyinrec
+WorkingDirectory=@INSTALL_DIR@
+
+# DLR_NO_INPUT=1: URL 为空时不再阻塞等待 stdin，通过 WebUI 添加任务
+# WEBUI_PORT: 内置 WebUI 端口
+Environment=DLR_NO_INPUT=1
+Environment=WEBUI_PORT=8000
+Environment=PYTHONUNBUFFERED=1
+Environment=TERM=xterm-256color
+
+ExecStart=@PYTHON_BIN@ @INSTALL_DIR@/main.py --web
+
+Restart=on-failure
+RestartSec=5
+
+# 日志统一进 journald：journalctl -u douyinliverecorder -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=douyinliverecorder
+
+# ---- 安全加固 ----
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=@INSTALL_DIR@
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

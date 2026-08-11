@@ -28,6 +28,10 @@ from typing import Any
 import configparser
 import httpx
 from src import spider, stream
+from src import config as app_config
+from src import state
+from src.adapters import registry, ResolveContext
+from src.url_config import TaskStore
 from src.proxy import ProxyDetector
 from src.utils import logger
 from src import utils
@@ -78,6 +82,18 @@ os_type = os.name
 clear_command = "cls" if os_type == 'nt' else "clear"
 color_obj = utils.Color()
 os.environ['PATH'] = ffmpeg_path + os.pathsep + current_env_path
+
+# 内置 WebUI：python main.py --web（端口可用环境变量 WEBUI_PORT 覆盖，默认 8000）
+if '--web' in sys.argv:
+    try:
+        from webui.server import start_in_background
+        from src import state as _state
+        logger.add(lambda m: _state.add_log(m.record['message'], m.record['level'].name), level='INFO')
+        webui_port = int(os.environ.get('WEBUI_PORT', '8000'))
+        start_in_background(port=webui_port, version=version)
+        print(f'WebUI 已启动: http://127.0.0.1:{webui_port}')
+    except Exception as e:
+        logger.error(f'WebUI 启动失败: {e}')
 
 
 def signal_handler(_signal, _frame):
@@ -555,14 +571,16 @@ def start_record(url_data: tuple, count_variable: int = -1) -> None:
             retry = 0
             record_quality_zh, record_url, anchor_name = url_data
             record_quality = get_quality_code(record_quality_zh)
+            # 运行状态注册（WebUI）
+            state.register_task(record_url, record_quality_zh, anchor_name)
             proxy_address = proxy_addr
             platform = '未知平台'
             live_domain = '/'.join(record_url.split('/')[0:3])
 
             if proxy_addr:
                 proxy_address = None
-                for platform in enable_proxy_platform_list:
-                    if platform and platform.strip() in record_url:
+                for pt in enable_proxy_platform_list or []:
+                    if pt and pt.strip() in record_url:
                         proxy_address = proxy_addr
                         break
 
@@ -576,468 +594,41 @@ def start_record(url_data: tuple, count_variable: int = -1) -> None:
             # print(f'\r全局代理:{global_proxy}')
             while True:
                 try:
-                    port_info = []
-                    if record_url.find("douyin.com/") > -1:
-                        platform = '抖音直播'
-                        with semaphore:
-                            if 'v.douyin.com' not in record_url and '/user/' not in record_url:
-                                json_data = asyncio.run(spider.get_douyin_web_stream_data(
-                                    url=record_url,
-                                    proxy_addr=proxy_address,
-                                    cookies=dy_cookie))
-                            else:
-                                json_data = asyncio.run(spider.get_douyin_app_stream_data(
-                                    url=record_url,
-                                    proxy_addr=proxy_address,
-                                    cookies=dy_cookie))
-                            port_info = asyncio.run(
-                                stream.get_douyin_stream_url(json_data, record_quality, proxy_address))
-
-                    elif record_url.find("https://www.tiktok.com/") > -1:
-                        platform = 'TikTok直播'
-                        with semaphore:
-                            if global_proxy or proxy_address:
-                                json_data = asyncio.run(spider.get_tiktok_stream_data(
-                                    url=record_url,
-                                    proxy_addr=proxy_address,
-                                    cookies=tiktok_cookie))
-                                port_info = asyncio.run(
-                                    stream.get_tiktok_stream_url(json_data, record_quality, proxy_address))
-                            else:
-                                logger.error("错误信息: 网络异常，请检查网络是否能正常访问TikTok平台")
-
-                    elif record_url.find("https://live.kuaishou.com/") > -1:
-                        platform = '快手直播'
-                        with semaphore:
-                            json_data = asyncio.run(spider.get_kuaishou_stream_data(
-                                url=record_url,
-                                proxy_addr=proxy_address,
-                                cookies=ks_cookie))
-                            port_info = asyncio.run(stream.get_kuaishou_stream_url(json_data, record_quality))
-
-                    elif record_url.find("https://www.huya.com/") > -1:
-                        platform = '虎牙直播'
-                        with semaphore:
-                            if record_quality not in ['OD', 'BD', 'UHD']:
-                                json_data = asyncio.run(spider.get_huya_stream_data(
-                                    url=record_url,
-                                    proxy_addr=proxy_address,
-                                    cookies=hy_cookie))
-                                port_info = asyncio.run(stream.get_huya_stream_url(json_data, record_quality))
-                            else:
-                                port_info = asyncio.run(spider.get_huya_app_stream_url(
-                                    url=record_url,
-                                    proxy_addr=proxy_address,
-                                    cookies=hy_cookie
-                                ))
-
-                    elif record_url.find("https://www.douyu.com/") > -1:
-                        platform = '斗鱼直播'
-                        with semaphore:
-                            json_data = asyncio.run(spider.get_douyu_info_data(
-                                url=record_url, proxy_addr=proxy_address, cookies=douyu_cookie))
-                            port_info = asyncio.run(stream.get_douyu_stream_url(
-                                json_data, video_quality=record_quality, cookies=douyu_cookie, proxy_addr=proxy_address
-                            ))
-
-                    elif record_url.find("https://www.yy.com/") > -1:
-                        platform = 'YY直播'
-                        with semaphore:
-                            json_data = asyncio.run(spider.get_yy_stream_data(
-                                url=record_url, proxy_addr=proxy_address, cookies=yy_cookie))
-                            port_info = asyncio.run(stream.get_yy_stream_url(json_data))
-
-                    elif record_url.find("https://live.bilibili.com/") > -1:
-                        platform = 'B站直播'
-                        with semaphore:
-                            json_data = asyncio.run(spider.get_bilibili_room_info(
-                                url=record_url, proxy_addr=proxy_address, cookies=bili_cookie))
-                            port_info = asyncio.run(stream.get_bilibili_stream_url(
-                                json_data, video_quality=record_quality, cookies=bili_cookie, proxy_addr=proxy_address))
-
-                    elif record_url.find("http://xhslink.com/") > -1 or \
-                            record_url.find("https://www.xiaohongshu.com/") > -1:
-                        platform = '小红书直播'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_xhs_stream_url(
-                                record_url, proxy_addr=proxy_address, cookies=xhs_cookie))
-                            retry += 1
-
-                    elif record_url.find("www.bigo.tv/") > -1 or record_url.find("slink.bigovideo.tv/") > -1:
-                        platform = 'Bigo直播'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_bigo_stream_url(
-                                record_url, proxy_addr=proxy_address, cookies=bigo_cookie))
-
-                    elif record_url.find("https://app.blued.cn/") > -1:
-                        platform = 'Blued直播'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_blued_stream_url(
-                                record_url, proxy_addr=proxy_address, cookies=blued_cookie))
-
-                    elif record_url.find("sooplive.co.kr/") > -1 or record_url.find("sooplive.com/") > -1:
-                        platform = 'SOOP'
-                        with semaphore:
-                            if global_proxy or proxy_address:
-                                json_data = asyncio.run(spider.get_sooplive_stream_data(
-                                    url=record_url, proxy_addr=proxy_address,
-                                    cookies=sooplive_cookie,
-                                    username=sooplive_username,
-                                    password=sooplive_password
-                                ))
-                                if json_data and json_data.get('new_cookies'):
-                                    utils.update_config(
-                                        config_file, 'Cookie', 'sooplive_cookie', json_data['new_cookies']
-                                    )
-                                port_info = asyncio.run(stream.get_stream_url(json_data, record_quality, spec=True))
-                            else:
-                                logger.error("错误信息: 网络异常，请检查本网络是否能正常访问SOOP平台")
-
-                    elif record_url.find("cc.163.com/") > -1:
-                        platform = '网易CC直播'
-                        with semaphore:
-                            json_data = asyncio.run(spider.get_netease_stream_data(
-                                url=record_url, cookies=netease_cookie))
-                            port_info = asyncio.run(stream.get_netease_stream_url(json_data, record_quality))
-
-                    elif record_url.find("qiandurebo.com/") > -1:
-                        platform = '千度热播'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_qiandurebo_stream_data(
-                                url=record_url, proxy_addr=proxy_address, cookies=qiandurebo_cookie))
-
-                    elif record_url.find("www.pandalive.co.kr/") > -1:
-                        platform = 'PandaTV'
-                        with semaphore:
-                            if global_proxy or proxy_address:
-                                json_data = asyncio.run(spider.get_pandatv_stream_data(
-                                    url=record_url,
-                                    proxy_addr=proxy_address,
-                                    cookies=pandatv_cookie
-                                ))
-                                port_info = asyncio.run(stream.get_stream_url(json_data, record_quality, spec=True))
-                            else:
-                                logger.error("错误信息: 网络异常，请检查本网络是否能正常访问PandaTV直播平台")
-
-                    elif record_url.find("fm.missevan.com/") > -1:
-                        platform = '猫耳FM直播'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_maoerfm_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=maoerfm_cookie))
-
-                    elif record_url.find("www.winktv.co.kr/") > -1:
-                        platform = 'WinkTV'
-                        with semaphore:
-                            if global_proxy or proxy_address:
-                                json_data = asyncio.run(spider.get_winktv_stream_data(
-                                    url=record_url,
-                                    proxy_addr=proxy_address,
-                                    cookies=winktv_cookie))
-                                port_info = asyncio.run(stream.get_stream_url(json_data, record_quality, spec=True))
-                            else:
-                                logger.error("错误信息: 网络异常，请检查本网络是否能正常访问WinkTV直播平台")
-
-                    elif record_url.find("www.flextv.co.kr/") > -1 or record_url.find("www.ttinglive.com/") > -1:
-                        platform = 'FlexTV'
-                        with semaphore:
-                            if global_proxy or proxy_address:
-                                json_data = asyncio.run(spider.get_flextv_stream_data(
-                                    url=record_url,
-                                    proxy_addr=proxy_address,
-                                    cookies=flextv_cookie,
-                                    username=flextv_username,
-                                    password=flextv_password
-                                ))
-                                if json_data and json_data.get('new_cookies'):
-                                    utils.update_config(
-                                        config_file, 'Cookie', 'flextv_cookie', json_data['new_cookies']
-                                    )
-                                if 'play_url_list' in json_data:
-                                    port_info = asyncio.run(stream.get_stream_url(json_data, record_quality, spec=True))
-                                else:
-                                    port_info = json_data
-                            else:
-                                logger.error("错误信息: 网络异常，请检查本网络是否能正常访问FlexTV直播平台")
-
-                    elif record_url.find("look.163.com/") > -1:
-                        platform = 'Look直播'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_looklive_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=look_cookie
-                            ))
-
-                    elif record_url.find("www.popkontv.com/") > -1:
-                        platform = 'PopkonTV'
-                        with semaphore:
-                            if global_proxy or proxy_address:
-                                port_info = asyncio.run(spider.get_popkontv_stream_url(
-                                    url=record_url,
-                                    proxy_addr=proxy_address,
-                                    access_token=popkontv_access_token,
-                                    username=popkontv_username,
-                                    password=popkontv_password,
-                                    partner_code=popkontv_partner_code
-                                ))
-                                if port_info and port_info.get('new_token'):
-                                    utils.update_config(
-                                        file_path=config_file, section='Authorization', key='popkontv_token',
-                                        new_value=port_info['new_token']
-                                    )
-
-                            else:
-                                logger.error("错误信息: 网络异常，请检查本网络是否能正常访问PopkonTV直播平台")
-
-                    elif record_url.find("twitcasting.tv/") > -1:
-                        platform = 'TwitCasting'
-                        with semaphore:
-                            json_data = asyncio.run(spider.get_twitcasting_stream_url(
-                                url=record_url,
-                                proxy_addr=proxy_address,
-                                cookies=twitcasting_cookie,
-                                account_type=twitcasting_account_type,
-                                username=twitcasting_username,
-                                password=twitcasting_password
-                            ))
-                            port_info = asyncio.run(stream.get_stream_url(json_data, record_quality, spec=False))
-
-                            if port_info and port_info.get('new_cookies'):
-                                utils.update_config(
-                                    file_path=config_file, section='Cookie', key='twitcasting_cookie',
-                                    new_value=port_info['new_cookies']
-                                )
-
-                    elif record_url.find("live.baidu.com/") > -1:
-                        platform = '百度直播'
-                        with semaphore:
-                            json_data = asyncio.run(spider.get_baidu_stream_data(
-                                url=record_url,
-                                proxy_addr=proxy_address,
-                                cookies=baidu_cookie))
-                            port_info = asyncio.run(stream.get_stream_url(json_data, record_quality))
-
-                    elif record_url.find("weibo.com/") > -1:
-                        platform = '微博直播'
-                        with semaphore:
-                            json_data = asyncio.run(spider.get_weibo_stream_data(
-                                url=record_url, proxy_addr=proxy_address, cookies=weibo_cookie))
-                            port_info = asyncio.run(stream.get_stream_url(
-                                json_data, record_quality, hls_extra_key='m3u8_url'))
-
-                    elif record_url.find("kugou.com/") > -1:
-                        platform = '酷狗直播'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_kugou_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=kugou_cookie))
-
-                    elif record_url.find("www.twitch.tv/") > -1:
-                        platform = 'TwitchTV'
-                        with semaphore:
-                            if global_proxy or proxy_address:
-                                json_data = asyncio.run(spider.get_twitchtv_stream_data(
-                                    url=record_url,
-                                    proxy_addr=proxy_address,
-                                    cookies=twitch_cookie
-                                ))
-                                port_info = asyncio.run(stream.get_stream_url(json_data, record_quality, spec=True))
-                            else:
-                                logger.error("错误信息: 网络异常，请检查本网络是否能正常访问TwitchTV直播平台")
-
-                    elif record_url.find("www.liveme.com/") > -1:
-                        if global_proxy or proxy_address:
-                            platform = 'LiveMe'
-                            with semaphore:
-                                port_info = asyncio.run(spider.get_liveme_stream_url(
-                                    url=record_url, proxy_addr=proxy_address, cookies=liveme_cookie))
-                        else:
-                            logger.error("错误信息: 网络异常，请检查本网络是否能正常访问LiveMe直播平台")
-
-                    elif record_url.find("www.huajiao.com/") > -1:
-                        platform = '花椒直播'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_huajiao_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=huajiao_cookie))
-
-                    elif record_url.find("7u66.com/") > -1:
-                        platform = '流星直播'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_liuxing_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=liuxing_cookie))
-
-                    elif record_url.find("showroom-live.com/") > -1:
-                        platform = 'ShowRoom'
-                        with semaphore:
-                            json_data = asyncio.run(spider.get_showroom_stream_data(
-                                url=record_url, proxy_addr=proxy_address, cookies=showroom_cookie))
-                            port_info = asyncio.run(stream.get_stream_url(json_data, record_quality, spec=True))
-
-                    elif record_url.find("live.acfun.cn/") > -1 or record_url.find("m.acfun.cn/") > -1:
-                        platform = 'Acfun'
-                        with semaphore:
-                            json_data = asyncio.run(spider.get_acfun_stream_data(
-                                url=record_url, proxy_addr=proxy_address, cookies=acfun_cookie))
-                            port_info = asyncio.run(stream.get_stream_url(
-                                json_data, record_quality, url_type='flv', flv_extra_key='url'))
-
-                    elif record_url.find("live.tlclw.com/") > -1:
-                        platform = '畅聊直播'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_changliao_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=changliao_cookie))
-
-                    elif record_url.find("ybw1666.com/") > -1:
-                        platform = '音播直播'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_yinbo_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=yinbo_cookie))
-
-                    elif record_url.find("www.inke.cn/") > -1:
-                        platform = '映客直播'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_yingke_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=yingke_cookie))
-
-                    elif record_url.find("www.zhihu.com/") > -1:
-                        platform = '知乎直播'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_zhihu_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=zhihu_cookie))
-
-                    elif record_url.find("chzzk.naver.com/") > -1:
-                        platform = 'CHZZK'
-                        with semaphore:
-                            json_data = asyncio.run(spider.get_chzzk_stream_data(
-                                url=record_url, proxy_addr=proxy_address, cookies=chzzk_cookie))
-                            port_info = asyncio.run(stream.get_stream_url(json_data, record_quality, spec=True))
-
-                    elif record_url.find("www.haixiutv.com/") > -1:
-                        platform = '嗨秀直播'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_haixiu_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=haixiu_cookie))
-
-                    elif record_url.find("vvxqiu.com/") > -1:
-                        platform = 'VV星球'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_vvxqiu_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=vvxqiu_cookie))
-
-                    elif record_url.find("17.live/") > -1:
-                        platform = '17Live'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_17live_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=yiqilive_cookie))
-
-                    elif record_url.find("www.lang.live/") > -1:
-                        platform = '浪Live'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_langlive_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=langlive_cookie))
-
-                    elif record_url.find("m.pp.weimipopo.com/") > -1:
-                        platform = '漂漂直播'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_pplive_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=pplive_cookie))
-
-                    elif record_url.find(".6.cn/") > -1:
-                        platform = '六间房直播'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_6room_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=six_room_cookie))
-
-                    elif record_url.find("lehaitv.com/") > -1:
-                        platform = '乐嗨直播'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_haixiu_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=lehaitv_cookie))
-
-                    elif record_url.find("h.catshow168.com/") > -1:
-                        platform = '花猫直播'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_pplive_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=huamao_cookie))
-
-                    elif record_url.find("live.shopee") > -1 or record_url.find("shp.ee/") > -1:
-                        platform = 'shopee'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_shopee_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=shopee_cookie))
-                            if port_info.get('uid'):
-                                new_record_url = record_url.split('?')[0] + '?' + str(port_info['uid'])
-
-                    elif record_url.find("www.youtube.com/") > -1 or record_url.find("youtu.be/") > -1:
-                        platform = 'Youtube'
-                        with semaphore:
-                            json_data = asyncio.run(spider.get_youtube_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=youtube_cookie))
-                            port_info = asyncio.run(stream.get_stream_url(json_data, record_quality, spec=True))
-
-                    elif record_url.find("tb.cn") > -1:
-                        platform = '淘宝直播'
-                        with semaphore:
-                            json_data = asyncio.run(spider.get_taobao_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=taobao_cookie))
-                            port_info = asyncio.run(stream.get_stream_url(
-                                json_data, record_quality,
-                                url_type='all', hls_extra_key='hlsUrl', flv_extra_key='flvUrl'
-                            ))
-
-                    elif record_url.find("3.cn") > -1 or record_url.find("m.jd.com") > -1:
-                        platform = '京东直播'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_jd_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=jd_cookie))
-
-                    elif record_url.find("faceit.com/") > -1:
-                        platform = 'faceit'
-                        with semaphore:
-                            if global_proxy or proxy_address:
-                                with semaphore:
-                                    json_data = asyncio.run(spider.get_faceit_stream_data(
-                                        url=record_url, proxy_addr=proxy_address, cookies=faceit_cookie))
-                                    port_info = asyncio.run(stream.get_stream_url(json_data, record_quality, spec=True))
-                            else:
-                                logger.error("错误信息: 网络异常，请检查本网络是否能正常访问faceit直播平台")
-
-                    elif record_url.find("www.miguvideo.com") > -1 or record_url.find("m.miguvideo.com") > -1:
-                        platform = '咪咕直播'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_migu_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=migu_cookie))
-
-                    elif record_url.find("show.lailianjie.com") > -1:
-                        platform = '连接直播'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_lianjie_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=lianjie_cookie))
-
-                    elif record_url.find("www.imkktv.com") > -1:
-                        platform = '来秀直播'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_laixiu_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=laixiu_cookie))
-
-                    elif record_url.find("www.picarto.tv") > -1:
-                        platform = 'Picarto'
-                        with semaphore:
-                            port_info = asyncio.run(spider.get_picarto_stream_url(
-                                url=record_url, proxy_addr=proxy_address, cookies=picarto_cookie))
-
-                    elif record_url.find(".m3u8") > -1 or record_url.find(".flv") > -1:
-                        platform = '自定义录制直播'
-                        port_info = {
-                            "anchor_name": platform + '_' + str(uuid.uuid4())[:8],
-                            "is_live": True,
-                            "record_url": record_url,
-                        }
-                        if '.flv' in record_url:
-                            port_info['flv_url'] = record_url
-                        else:
-                            port_info['m3u8_url'] = record_url
-
-                    else:
-                        logger.error(f'{record_url} {platform}直播地址')
+                    port_info = None
+                    adapter = registry.match(record_url)
+                    if adapter is None:
+                        logger.error(f'{record_url} 未知平台，无法解析，请检查 URL 是否正确')
                         return
+                    platform = adapter.name
+
+                    ctx = ResolveContext(
+                        quality=record_quality,
+                        proxy=proxy_address,
+                        global_proxy=global_proxy,
+                        cookies=app_cookies,
+                        accounts=app_accounts,
+                        tokens=app_tokens,
+                    )
+                    # 平台解析由适配器完成（新增平台见 src/adapters.py，无需改本文件）
+                    port_info = asyncio.run(adapter.resolve(record_url, ctx))
+                    if port_info is None:
+                        continue  # 解析失败（网络/无代理），等待下一轮检测
+
+                    # new_cookies / new_token 写回 config.ini
+                    if port_info.get('new_cookies'):
+                        cookie_key = {
+                            'SOOP': 'sooplive_cookie',
+                            'FlexTV': 'flextv_cookie',
+                            'TwitCasting': 'twitcasting_cookie',
+                        }.get(platform)
+                        if cookie_key:
+                            utils.update_config(config_file, 'Cookie', cookie_key, port_info['new_cookies'])
+                    if port_info.get('new_token'):
+                        utils.update_config(config_file, 'Authorization', 'popkontv_token', port_info['new_token'])
+
+                    # 运行状态上报（WebUI）
+                    state.update_task(record_url, platform=platform)
+
 
                     if anchor_name:
                         if '主播:' in anchor_name:
@@ -1057,6 +648,7 @@ def start_record(url_data: tuple, count_variable: int = -1) -> None:
                     else:
                         anchor_name = clean_name(anchor_name)
                         record_name = f'序号{count_variable} {anchor_name}'
+                        state.update_task(record_url, anchor=anchor_name, quality=record_quality_zh)
 
                         if record_url in url_comments:
                             print(f"[{anchor_name}]已被注释,本条线程将会退出")
@@ -1075,6 +667,7 @@ def start_record(url_data: tuple, count_variable: int = -1) -> None:
                         push_at = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
                         if port_info['is_live'] is False:
                             print(f"\r{record_name} 等待直播... ")
+                            state.update_task(record_url, status='offline', message='等待直播')
 
                             if start_pushed:
                                 if over_show_push:
@@ -1094,6 +687,7 @@ def start_record(url_data: tuple, count_variable: int = -1) -> None:
                         else:
                             content = f"\r{record_name} 正在直播中..."
                             print(content)
+                            state.update_task(record_url, status='waiting', message='检测到直播')
 
                             if live_status_push and not start_pushed:
                                 if begin_show_push:
@@ -1150,8 +744,7 @@ def start_record(url_data: tuple, count_variable: int = -1) -> None:
                                     if enable_https_recording and real_url.startswith("http://"):
                                         real_url = real_url.replace("http://", "https://")
 
-                                    http_record_list = ['shopee', "migu"]
-                                    if platform in http_record_list:
+                                    if adapter.http_force:
                                         real_url = real_url.replace("https://", "http://")
 
                                 user_agent = ("Mozilla/5.0 (Linux; Android 11; SAMSUNG SM-G973U) AppleWebKit/537.36 ("
@@ -1163,14 +756,12 @@ def start_record(url_data: tuple, count_variable: int = -1) -> None:
                                 probesize = "10000000"
                                 bufsize = "8000k"
                                 max_muxing_queue_size = "1024"
-                                for pt_host in overseas_platform_host:
-                                    if pt_host in record_url:
-                                        rw_timeout = "50000000"
-                                        analyzeduration = "40000000"
-                                        probesize = "20000000"
-                                        bufsize = "15000k"
-                                        max_muxing_queue_size = "2048"
-                                        break
+                                if adapter.overseas:
+                                    rw_timeout = "50000000"
+                                    analyzeduration = "40000000"
+                                    probesize = "20000000"
+                                    bufsize = "15000k"
+                                    max_muxing_queue_size = "2048"
 
                                 ffmpeg_command = [
                                     'ffmpeg', "-y",
@@ -1194,7 +785,7 @@ def start_record(url_data: tuple, count_variable: int = -1) -> None:
                                     "-avoid_negative_ts", "1"
                                 ]
 
-                                headers = get_record_headers(platform, record_url)
+                                headers = adapter.get_headers(record_url)
                                 if headers:
                                     ffmpeg_command.insert(11, "-headers")
                                     ffmpeg_command.insert(12, headers)
@@ -1206,6 +797,8 @@ def start_record(url_data: tuple, count_variable: int = -1) -> None:
                                 recording.add(record_name)
                                 start_record_time = datetime.datetime.now()
                                 recording_time_list[record_name] = [start_record_time, record_quality_zh]
+                                state.update_task(record_url, status='recording',
+                                                  recording_since=time.time(), file=full_path)
                                 rec_info = f"\r{anchor_name} 准备开始录制视频: {full_path}"
                                 if show_url:
                                     re_plat = ('WinkTV', 'PandaTV', 'ShowRoom', 'CHZZK', 'Youtube')
@@ -1217,19 +810,17 @@ def start_record(url_data: tuple, count_variable: int = -1) -> None:
                                             f"{platform} | {anchor_name} | 直播源地址: {real_url}")
 
                                 only_flv_record = False
-                                only_flv_platform_list = ['shopee', '花椒直播']
-                                if platform in only_flv_platform_list:
+                                if adapter.only_flv:
                                     logger.debug(f"提示: {platform} 将强制使用FLV格式录制")
                                     only_flv_record = True
 
                                 only_audio_record = False
-                                only_audio_platform_list = ['猫耳FM直播', 'Look直播']
-                                if platform in only_audio_platform_list:
+                                if adapter.only_audio:
                                     only_audio_record = True
 
                                 record_save_type = video_save_type
 
-                                if is_flv_preferred_platform(record_url) and port_info.get('flv_url'):
+                                if adapter.flv_preferred and port_info.get('flv_url'):
                                     codec = utils.get_query_params(port_info['flv_url'], "codec")
                                     if codec and codec[0] == 'h265':
                                         logger.warning("FLV is not supported for h265 codec, use TS format instead")
@@ -1333,6 +924,8 @@ def start_record(url_data: tuple, count_variable: int = -1) -> None:
 
                                             if download_success:
                                                 record_finished = True
+                                                state.update_task(record_url, status='offline', recording_since=0,
+                                                                  message='录制完成')
                                                 print(
                                                     f"\n{anchor_name} {time.strftime('%Y-%m-%d %H:%M:%S')} 直播录制完成\n")
 
@@ -1793,142 +1386,80 @@ while True:
                 ini_URL_content = file.read().strip()
 
         if not ini_URL_content.strip():
-            input_url = input('请输入要录制的主播直播间网址（尽量使用PC网页端的直播间地址）:\n')
-            with open(url_config_file, 'w', encoding=text_encoding) as file:
-                file.write(input_url)
+            if os.environ.get('DLR_NO_INPUT') == '1':
+                # 服务模式（systemd/Docker）：URL 为空时通过 WebUI 添加任务，避免阻塞 stdin
+                time.sleep(5)
+            else:
+                input_url = input('请输入要录制的主播直播间网址（尽量使用PC网页端的直播间地址）:\n')
+                with open(url_config_file, 'w', encoding=text_encoding) as file:
+                    file.write(input_url)
     except OSError as err:
         logger.error(f"发生 I/O 错误: {err}")
 
-    video_save_path = read_config_value(config, '录制设置', '直播保存路径(不填则默认)', "")
-    folder_by_author = options.get(read_config_value(config, '录制设置', '保存文件夹是否以作者区分', "是"), False)
-    folder_by_time = options.get(read_config_value(config, '录制设置', '保存文件夹是否以时间区分', "否"), False)
-    folder_by_title = options.get(read_config_value(config, '录制设置', '保存文件夹是否以标题区分', "否"), False)
-    filename_by_title = options.get(read_config_value(config, '录制设置', '保存文件名是否包含标题', "否"), False)
-    clean_emoji = options.get(read_config_value(config, '录制设置', '是否去除名称中的表情符号', "是"), True)
-    video_save_type = read_config_value(config, '录制设置', '视频保存格式ts|mkv|flv|mp4|mp3音频|m4a音频', "ts")
-    video_record_quality = read_config_value(config, '录制设置', '原画|超清|高清|标清|流畅', "原画")
-    use_proxy = options.get(read_config_value(config, '录制设置', '是否使用代理ip(是/否)', "是"), False)
-    proxy_addr_bak = read_config_value(config, '录制设置', '代理地址', "")
+    cfg = app_config.load_config(config_file, text_encoding)
+    video_save_path = cfg.video_save_path
+    folder_by_author = cfg.folder_by_author
+    folder_by_time = cfg.folder_by_time
+    folder_by_title = cfg.folder_by_title
+    filename_by_title = cfg.filename_by_title
+    clean_emoji = cfg.clean_emoji
+    video_save_type = cfg.video_save_type
+    video_record_quality = cfg.video_record_quality
+    use_proxy = cfg.use_proxy
+    proxy_addr_bak = cfg.proxy_addr or ''
     proxy_addr = None if not use_proxy else proxy_addr_bak
-    max_request = int(read_config_value(config, '录制设置', '同一时间访问网络的线程数', 3))
+    max_request = cfg.max_request
     semaphore = threading.Semaphore(max_request)
-    delay_default = int(read_config_value(config, '录制设置', '循环时间(秒)', 120))
-    local_delay_default = int(read_config_value(config, '录制设置', '排队读取网址时间(秒)', 0))
-    loop_time = options.get(read_config_value(config, '录制设置', '是否显示循环秒数', "否"), False)
-    show_url = options.get(read_config_value(config, '录制设置', '是否显示直播源地址', "否"), False)
-    split_video_by_time = options.get(read_config_value(config, '录制设置', '分段录制是否开启', "否"), False)
-    enable_https_recording = options.get(read_config_value(config, '录制设置', '是否强制启用https录制', "否"), False)
-    disk_space_limit = float(read_config_value(config, '录制设置', '录制空间剩余阈值(gb)', 1.0))
-    split_time = str(read_config_value(config, '录制设置', '视频分段时间(秒)', 1800))
-    converts_to_mp4 = options.get(read_config_value(config, '录制设置', '录制完成后自动转为mp4格式', "否"), False)
-    converts_to_h264 = options.get(read_config_value(config, '录制设置', 'mp4格式重新编码为h264', "否"), False)
-    delete_origin_file = options.get(read_config_value(config, '录制设置', '追加格式后删除原文件', "否"), False)
-    create_time_file = options.get(read_config_value(config, '录制设置', '生成时间字幕文件', "否"), False)
-    is_run_script = options.get(read_config_value(config, '录制设置', '是否录制完成后执行自定义脚本', "否"), False)
-    custom_script = read_config_value(config, '录制设置', '自定义脚本执行命令', "") if is_run_script else None
-    enable_proxy_platform = read_config_value(
-        config, '录制设置', '使用代理录制的平台(逗号分隔)',
-        'tiktok, soop, pandalive, winktv, flextv, popkontv, twitch, liveme, showroom, chzzk, shopee, shp, youtu, faceit'
-    )
-    enable_proxy_platform_list = enable_proxy_platform.replace('，', ',').split(',') if enable_proxy_platform else None
-    extra_enable_proxy = read_config_value(config, '录制设置', '额外使用代理录制的平台(逗号分隔)', '')
-    extra_enable_proxy_platform_list = extra_enable_proxy.replace('，', ',').split(',') if extra_enable_proxy else None
-    live_status_push = read_config_value(config, '推送配置', '直播状态推送渠道', "")
-    dingtalk_api_url = read_config_value(config, '推送配置', '钉钉推送接口链接', "")
-    xizhi_api_url = read_config_value(config, '推送配置', '微信推送接口链接', "")
-    bark_msg_api = read_config_value(config, '推送配置', 'bark推送接口链接', "")
-    bark_msg_level = read_config_value(config, '推送配置', 'bark推送中断级别', "active")
-    bark_msg_ring = read_config_value(config, '推送配置', 'bark推送铃声', "bell")
-    dingtalk_phone_num = read_config_value(config, '推送配置', '钉钉通知@对象(填手机号)', "")
-    dingtalk_is_atall = options.get(read_config_value(config, '推送配置', '钉钉通知@全体(是/否)', "否"), False)
-    tg_token = read_config_value(config, '推送配置', 'tgapi令牌', "")
-    tg_chat_id = read_config_value(config, '推送配置', 'tg聊天id(个人或者群组id)', "")
-    email_host = read_config_value(config, '推送配置', 'SMTP邮件服务器', "")
-    open_smtp_ssl = options.get(read_config_value(config, '推送配置', '是否使用SMTP服务SSL加密(是/否)', "是"), True)
-    smtp_port = read_config_value(config, '推送配置', 'SMTP邮件服务器端口', "")
-    login_email = read_config_value(config, '推送配置', '邮箱登录账号', "")
-    email_password = read_config_value(config, '推送配置', '发件人密码(授权码)', "")
-    sender_email = read_config_value(config, '推送配置', '发件人邮箱', "")
-    sender_name = read_config_value(config, '推送配置', '发件人显示昵称', "")
-    to_email = read_config_value(config, '推送配置', '收件人邮箱', "")
-    ntfy_api = read_config_value(config, '推送配置', 'ntfy推送地址', "")
-    ntfy_tags = read_config_value(config, '推送配置', 'ntfy推送标签', "tada")
-    ntfy_email = read_config_value(config, '推送配置', 'ntfy推送邮箱', "")
-    pushplus_token = read_config_value(config, '推送配置', 'pushplus推送token', "")
-    push_message_title = read_config_value(config, '推送配置', '自定义推送标题', "直播间状态更新通知")
-    begin_push_message_text = read_config_value(config, '推送配置', '自定义开播推送内容', "")
-    over_push_message_text = read_config_value(config, '推送配置', '自定义关播推送内容', "")
-    disable_record = options.get(read_config_value(config, '推送配置', '只推送通知不录制(是/否)', "否"), False)
-    push_check_seconds = int(read_config_value(config, '推送配置', '直播推送检测频率(秒)', 1800))
-    begin_show_push = options.get(read_config_value(config, '推送配置', '开播推送开启(是/否)', "是"), True)
-    over_show_push = options.get(read_config_value(config, '推送配置', '关播推送开启(是/否)', "否"), False)
-    sooplive_username = read_config_value(config, '账号密码', 'sooplive账号', '')
-    sooplive_password = read_config_value(config, '账号密码', 'sooplive密码', '')
-    flextv_username = read_config_value(config, '账号密码', 'flextv账号', '')
-    flextv_password = read_config_value(config, '账号密码', 'flextv密码', '')
-    popkontv_username = read_config_value(config, '账号密码', 'popkontv账号', '')
-    popkontv_partner_code = read_config_value(config, '账号密码', 'partner_code', 'P-00001')
-    popkontv_password = read_config_value(config, '账号密码', 'popkontv密码', '')
-    twitcasting_account_type = read_config_value(config, '账号密码', 'twitcasting账号类型', 'normal')
-    twitcasting_username = read_config_value(config, '账号密码', 'twitcasting账号', '')
-    twitcasting_password = read_config_value(config, '账号密码', 'twitcasting密码', '')
-    popkontv_access_token = read_config_value(config, 'Authorization', 'popkontv_token', '')
-    dy_cookie = read_config_value(config, 'Cookie', '抖音cookie', '')
-    ks_cookie = read_config_value(config, 'Cookie', '快手cookie', '')
-    tiktok_cookie = read_config_value(config, 'Cookie', 'tiktok_cookie', '')
-    hy_cookie = read_config_value(config, 'Cookie', '虎牙cookie', '')
-    douyu_cookie = read_config_value(config, 'Cookie', '斗鱼cookie', '')
-    yy_cookie = read_config_value(config, 'Cookie', 'yy_cookie', '')
-    bili_cookie = read_config_value(config, 'Cookie', 'B站cookie', '')
-    xhs_cookie = read_config_value(config, 'Cookie', '小红书cookie', '')
-    bigo_cookie = read_config_value(config, 'Cookie', 'bigo_cookie', '')
-    blued_cookie = read_config_value(config, 'Cookie', 'blued_cookie', '')
-    sooplive_cookie = read_config_value(config, 'Cookie', 'sooplive_cookie', '')
-    netease_cookie = read_config_value(config, 'Cookie', 'netease_cookie', '')
-    qiandurebo_cookie = read_config_value(config, 'Cookie', '千度热播_cookie', '')
-    pandatv_cookie = read_config_value(config, 'Cookie', 'pandatv_cookie', '')
-    maoerfm_cookie = read_config_value(config, 'Cookie', '猫耳fm_cookie', '')
-    winktv_cookie = read_config_value(config, 'Cookie', 'winktv_cookie', '')
-    flextv_cookie = read_config_value(config, 'Cookie', 'flextv_cookie', '')
-    look_cookie = read_config_value(config, 'Cookie', 'look_cookie', '')
-    twitcasting_cookie = read_config_value(config, 'Cookie', 'twitcasting_cookie', '')
-    baidu_cookie = read_config_value(config, 'Cookie', 'baidu_cookie', '')
-    weibo_cookie = read_config_value(config, 'Cookie', 'weibo_cookie', '')
-    kugou_cookie = read_config_value(config, 'Cookie', 'kugou_cookie', '')
-    twitch_cookie = read_config_value(config, 'Cookie', 'twitch_cookie', '')
-    liveme_cookie = read_config_value(config, 'Cookie', 'liveme_cookie', '')
-    huajiao_cookie = read_config_value(config, 'Cookie', 'huajiao_cookie', '')
-    liuxing_cookie = read_config_value(config, 'Cookie', 'liuxing_cookie', '')
-    showroom_cookie = read_config_value(config, 'Cookie', 'showroom_cookie', '')
-    acfun_cookie = read_config_value(config, 'Cookie', 'acfun_cookie', '')
-    changliao_cookie = read_config_value(config, 'Cookie', 'changliao_cookie', '')
-    yinbo_cookie = read_config_value(config, 'Cookie', 'yinbo_cookie', '')
-    yingke_cookie = read_config_value(config, 'Cookie', 'yingke_cookie', '')
-    zhihu_cookie = read_config_value(config, 'Cookie', 'zhihu_cookie', '')
-    chzzk_cookie = read_config_value(config, 'Cookie', 'chzzk_cookie', '')
-    haixiu_cookie = read_config_value(config, 'Cookie', 'haixiu_cookie', '')
-    vvxqiu_cookie = read_config_value(config, 'Cookie', 'vvxqiu_cookie', '')
-    yiqilive_cookie = read_config_value(config, 'Cookie', '17live_cookie', '')
-    langlive_cookie = read_config_value(config, 'Cookie', 'langlive_cookie', '')
-    pplive_cookie = read_config_value(config, 'Cookie', 'pplive_cookie', '')
-    six_room_cookie = read_config_value(config, 'Cookie', '6room_cookie', '')
-    lehaitv_cookie = read_config_value(config, 'Cookie', 'lehaitv_cookie', '')
-    huamao_cookie = read_config_value(config, 'Cookie', 'huamao_cookie', '')
-    shopee_cookie = read_config_value(config, 'Cookie', 'shopee_cookie', '')
-    youtube_cookie = read_config_value(config, 'Cookie', 'youtube_cookie', '')
-    taobao_cookie = read_config_value(config, 'Cookie', 'taobao_cookie', '')
-    jd_cookie = read_config_value(config, 'Cookie', 'jd_cookie', '')
-    faceit_cookie = read_config_value(config, 'Cookie', 'faceit_cookie', '')
-    migu_cookie = read_config_value(config, 'Cookie', 'migu_cookie', '')
-    lianjie_cookie = read_config_value(config, 'Cookie', 'lianjie_cookie', '')
-    laixiu_cookie = read_config_value(config, 'Cookie', 'laixiu_cookie', '')
-    picarto_cookie = read_config_value(config, 'Cookie', 'picarto_cookie', '')
+    delay_default = cfg.delay_default
+    local_delay_default = cfg.local_delay_default
+    loop_time = cfg.loop_time
+    show_url = cfg.show_url
+    split_video_by_time = cfg.split_video_by_time
+    enable_https_recording = cfg.enable_https_recording
+    disk_space_limit = cfg.disk_space_limit
+    split_time = str(cfg.split_time)
+    converts_to_mp4 = cfg.converts_to_mp4
+    converts_to_h264 = cfg.converts_to_h264
+    delete_origin_file = cfg.delete_origin_file
+    create_time_file = cfg.create_time_file
+    is_run_script = cfg.is_run_script
+    custom_script = cfg.custom_script
+    enable_proxy_platform_list = cfg.enable_proxy_platform_list
+    extra_enable_proxy_platform_list = cfg.extra_enable_proxy_platform_list
+    live_status_push = cfg.live_status_push
+    dingtalk_api_url = cfg.dingtalk_api_url
+    xizhi_api_url = cfg.xizhi_api_url
+    bark_msg_api = cfg.bark_msg_api
+    bark_msg_level = cfg.bark_msg_level
+    bark_msg_ring = cfg.bark_msg_ring
+    dingtalk_phone_num = cfg.dingtalk_phone_num
+    dingtalk_is_atall = cfg.dingtalk_is_atall
+    tg_token = cfg.tg_token
+    tg_chat_id = cfg.tg_chat_id
+    email_host = cfg.email_host
+    open_smtp_ssl = cfg.open_smtp_ssl
+    smtp_port = cfg.smtp_port
+    login_email = cfg.login_email
+    email_password = cfg.email_password
+    sender_email = cfg.sender_email
+    sender_name = cfg.sender_name
+    to_email = cfg.to_email
+    ntfy_api = cfg.ntfy_api
+    ntfy_tags = cfg.ntfy_tags
+    ntfy_email = cfg.ntfy_email
+    pushplus_token = cfg.pushplus_token
+    push_message_title = cfg.push_message_title
+    begin_push_message_text = cfg.begin_push_message_text
+    over_push_message_text = cfg.over_push_message_text
+    disable_record = cfg.disable_record
+    push_check_seconds = cfg.push_check_seconds
+    begin_show_push = cfg.begin_show_push
+    over_show_push = cfg.over_show_push
+    # 供适配器解析上下文使用（每轮热更新）
+    app_cookies = cfg.cookies
+    app_accounts = cfg.accounts
+    app_tokens = cfg.tokens
 
-    video_save_type_list = ("FLV", "MKV", "TS", "MP4", "MP3音频", "M4A音频", "MP3", "M4A")
-    if video_save_type and video_save_type.upper() in video_save_type_list:
-        video_save_type = video_save_type.upper()
-    else:
-        video_save_type = "TS"
 
     check_path = video_save_path or default_path
     if utils.check_disk_capacity(check_path, show=first_run) < disk_space_limit:
@@ -1938,176 +1469,14 @@ while True:
                            f"Exiting program due to the disk space limit being reached.")
             sys.exit(-1)
 
-
-    def contains_url(string: str) -> bool:
-        pattern = r"(https?://)?(www\.)?[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+(:\d+)?(/.*)?"
-        return re.search(pattern, string) is not None
-
-
     try:
-        url_comments, line_list, url_line_list = [[] for _ in range(3)]
-        with (open(url_config_file, "r", encoding=text_encoding, errors='ignore') as file):
-            for origin_line in file:
-                if origin_line in line_list:
-                    delete_line(url_config_file, origin_line)
-                line_list.append(origin_line)
-                line = origin_line.strip()
-                if len(line) < 18:
-                    continue
-
-                line_spilt = line.split('主播: ')
-                if len(line_spilt) > 2:
-                    line = update_file(url_config_file, line, f'{line_spilt[0]}主播: {line_spilt[-1]}')
-
-                is_comment_line = line.startswith("#")
-                if is_comment_line:
-                    line = line.lstrip('#')
-
-                if re.search('[,，]', line):
-                    split_line = re.split('[,，]', line)
-                else:
-                    split_line = [line, '']
-
-                if len(split_line) == 1:
-                    url = split_line[0]
-                    quality, name = [video_record_quality, '']
-                elif len(split_line) == 2:
-                    if contains_url(split_line[0]):
-                        quality = video_record_quality
-                        url, name = split_line
-                    else:
-                        quality, url = split_line
-                        name = ''
-                else:
-                    quality, url, name = split_line
-
-                if quality not in ("原画", "蓝光", "超清", "高清", "标清", "流畅"):
-                    quality = '原画'
-
-                if url not in url_line_list:
-                    url_line_list.append(url)
-                else:
-                    delete_line(url_config_file, origin_line)
-
-                url = 'https://' + url if '://' not in url else url
-                url_host = url.split('/')[2]
-
-                platform_host = [
-                    'live.douyin.com',
-                    'v.douyin.com',
-                    'www.douyin.com',
-                    'live.kuaishou.com',
-                    'www.huya.com',
-                    'www.douyu.com',
-                    'www.yy.com',
-                    'live.bilibili.com',
-                    'www.redelight.cn',
-                    'www.xiaohongshu.com',
-                    'xhslink.com',
-                    'www.bigo.tv',
-                    'slink.bigovideo.tv',
-                    'app.blued.cn',
-                    'cc.163.com',
-                    'qiandurebo.com',
-                    'fm.missevan.com',
-                    'look.163.com',
-                    'twitcasting.tv',
-                    'live.baidu.com',
-                    'weibo.com',
-                    'fanxing.kugou.com',
-                    'fanxing2.kugou.com',
-                    'mfanxing.kugou.com',
-                    'www.huajiao.com',
-                    'www.7u66.com',
-                    'wap.7u66.com',
-                    'live.acfun.cn',
-                    'm.acfun.cn',
-                    'live.tlclw.com',
-                    'wap.tlclw.com',
-                    'live.ybw1666.com',
-                    'wap.ybw1666.com',
-                    'www.inke.cn',
-                    'www.zhihu.com',
-                    'www.haixiutv.com',
-                    "h5webcdnp.vvxqiu.com",
-                    "17.live",
-                    'www.lang.live',
-                    "m.pp.weimipopo.com",
-                    "v.6.cn",
-                    "m.6.cn",
-                    'www.lehaitv.com',
-                    'h.catshow168.com',
-                    'e.tb.cn',
-                    'huodong.m.taobao.com',
-                    '3.cn',
-                    'eco.m.jd.com',
-                    'www.miguvideo.com',
-                    'm.miguvideo.com',
-                    'show.lailianjie.com',
-                    'www.imkktv.com',
-                    'www.picarto.tv'
-                ]
-                overseas_platform_host = [
-                    'www.tiktok.com',
-                    'play.sooplive.co.kr',
-                    'm.sooplive.co.kr',
-                    'www.sooplive.com',
-                    'm.sooplive.com',
-                    'www.pandalive.co.kr',
-                    'www.winktv.co.kr',
-                    'www.flextv.co.kr',
-                    'www.ttinglive.com',
-                    'www.popkontv.com',
-                    'www.twitch.tv',
-                    'www.liveme.com',
-                    'www.showroom-live.com',
-                    'chzzk.naver.com',
-                    'm.chzzk.naver.com',
-                    'live.shopee.',
-                    '.shp.ee',
-                    'www.youtube.com',
-                    'youtu.be',
-                    'www.faceit.com'
-                ]
-
-                platform_host.extend(overseas_platform_host)
-                clean_url_host_list = (
-                    "live.douyin.com",
-                    "live.bilibili.com",
-                    "www.huajiao.com",
-                    "www.zhihu.com",
-                    "www.huya.com",
-                    "chzzk.naver.com",
-                    "www.liveme.com",
-                    "www.haixiutv.com",
-                    "v.6.cn",
-                    "m.6.cn",
-                    'www.lehaitv.com'
-                )
-
-                if 'live.shopee.' in url_host or '.shp.ee' in url_host:
-                    url_host = 'live.shopee.' if 'live.shopee.' in url_host else '.shp.ee'
-
-                if url_host in platform_host or any(ext in url for ext in (".flv", ".m3u8")):
-                    if url_host in clean_url_host_list:
-                        url = update_file(url_config_file, old_str=url, new_str=url.split('?')[0])
-
-                    if 'xiaohongshu' in url:
-                        host_id = re.search('&host_id=(.*?)(?=&|$)', url)
-                        if host_id:
-                            new_url = url.split('?')[0] + f'?host_id={host_id.group(1)}'
-                            url = update_file(url_config_file, old_str=url, new_str=new_url)
-
-                    url_comments = [i for i in url_comments if url not in i]
-                    if is_comment_line:
-                        url_comments.append(url)
-                    else:
-                        new_line = (quality, url, name)
-                        url_tuples_list.append(new_line)
-                else:
-                    if not origin_line.startswith('#'):
-                        color_obj.print_colored(f"\r{origin_line.strip()} 本行包含未知链接.此条跳过", color_obj.YELLOW)
-                        update_file(url_config_file, old_str=origin_line, new_str=origin_line, start_str='#')
+        task_store = TaskStore(url_config_file)
+        url_entries, unknown_urls = task_store.load()
+        url_tuples_list = [(e.quality, e.url, e.name) for e in url_entries if not e.commented]
+        url_comments = [e.url for e in url_entries if e.commented]
+        for unknown_url in unknown_urls:
+            if unknown_url not in url_comments:
+                color_obj.print_colored(f"\r{unknown_url} 本行包含未知链接.此条跳过", color_obj.YELLOW)
 
         while len(need_update_line_list):
             a = need_update_line_list.pop()

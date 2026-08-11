@@ -77,20 +77,27 @@
     ├── /config -> (config record)
     ├── /logs -> (save runing log file)
     ├── /backup_config -> (backup file)
-    ├── /douyinliverecorder -> (package)
-        ├── initializer.py-> (check and install nodejs)
-    	├── spider.py-> (get live data)
-    	├── stream.py-> (get live stream address)
+    ├── /src -> (package)
+        ├── initializer.py -> (check and install nodejs)
+    	├── spider.py -> (get live data)
+    	├── stream.py -> (get live stream address)
+        ├── adapters.py -> (平台适配器插件系统：注册表 + 51 个平台适配器)
+        ├── config.py -> (配置加载：类型转换、集中管理)
+        ├── url_config.py -> (URL 配置解析：TaskStore 增删改/校验/自动清理)
+        ├── state.py -> (运行状态：任务实时状态 + 日志缓冲，WebUI 数据源)
     	├── utils.py -> (contains utility functions)
     	├── logger.py -> (logger handdle)
     	├── room.py -> (get room info)
     	├── ab_sign.py-> (generate dy token)
     	├── /javascript -> (some decrypt code)
+    ├── /webui -> (Web 管理界面，FastAPI)
+        ├── app.py -> (FastAPI 应用：任务/配置/状态/日志/文件 API)
+        ├── server.py -> (启动入口：python -m webui 或 main.py --web 内置)
+        ├── /static/index.html -> (单页管理界面)
     ├── main.py -> (main file)
     ├── ffmpeg_install.py -> (ffmpeg install script)
     ├── demo.py -> (call package test demo)
     ├── msg_push.py -> (send live status update message)
-    ├── ffmpeg.exe -> (record video)
     ├── index.html -> (play m3u8 and flv video)
     ├── requirements.txt -> (library dependencies)
     ├── docker-compose.yaml -> (Container Orchestration File)
@@ -98,6 +105,76 @@
     ├── StopRecording.vbs -> (stop recording script on Windows)
     ...
 ```
+
+> **二次开发提示**：本项目已从「单体 if/elif 平台分支」重构为「适配器 + 注册表」插件架构。
+> 新增平台无需修改 main.py，只需三步：
+> 1. 在 `src/spider.py` 实现抓取函数（返回原始 json_data）；
+> 2. 在 `src/stream.py` 实现流地址解析函数（返回统一 dict）；
+> 3. 在 `src/adapters.py` 中继承 `TwoStepAdapter` / `DirectAdapter` 写一个适配器类并加 `@register_adapter`。
+
+</div>
+
+## 🌐 WebUI 管理界面
+
+内置 Web 管理界面（FastAPI），支持：任务增删/暂停恢复、配置在线编辑、录制状态实时查看、日志面板、已录制文件播放与下载。
+
+**方式一：内置启动（推荐，可看实时状态）**
+
+```bash
+python main.py --web
+# 端口默认 8000，可用环境变量覆盖：WEBUI_PORT=9000 python main.py --web
+# 浏览器访问 http://127.0.0.1:8000
+```
+
+**方式二：独立启动（仅文件级管理）**
+
+```bash
+python -m webui --port 8000
+```
+
+**方式三：Docker**
+
+```bash
+docker compose up -d
+# 访问 http://<主机IP>:8000
+```
+
+**方式四：systemd 服务（服务器长期值守推荐）**
+
+```bash
+# 一键安装（自动安装 ffmpeg/nodejs、创建专用用户、注册开机自启）
+sudo ./deploy/install.sh
+
+# 可选参数
+sudo ./deploy/install.sh --port 9000 --install-dir /opt/DouyinLiveRecorder --user douyinrec
+
+# 查看状态 / 日志 / 重启
+systemctl status douyinliverecorder
+journalctl -u douyinliverecorder -f
+systemctl restart douyinliverecorder
+
+# 卸载（--purge 同时删除安装目录与数据）
+sudo ./deploy/install.sh --uninstall --purge
+```
+
+服务说明：
+- 以专用系统用户 `douyinrec` 运行，`Restart=on-failure` 崩溃自动拉起
+- 服务模式下 `DLR_NO_INPUT=1`：URL 列表为空时不再阻塞等待输入，直接通过 WebUI 添加任务
+- 所有日志统一进 journald，也可在 `logs/` 目录查看运行日志
+- 容器环境（无 systemd）请使用 Docker 方式或 `./deploy/install.sh --no-systemd`
+
+常用 API：
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/status` | 全局状态（录制中数量/任务数/磁盘） |
+| GET | `/api/tasks` | 任务列表（含实时状态） |
+| POST | `/api/tasks` | 添加任务 `{url, quality?, name?}` |
+| DELETE | `/api/tasks?url=` | 删除任务 |
+| PUT | `/api/tasks/comment?url=&commented=` | 暂停/恢复任务 |
+| GET/PUT | `/api/config` | 读取/保存 config.ini |
+| GET | `/api/logs` | 运行日志（内置模式实时转发 loguru） |
+| GET | `/api/videos` | 已录制文件列表，`/videos/...` 播放/下载 |
 
 </div>
 

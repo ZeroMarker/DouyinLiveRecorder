@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DouyinLiveRecorder WebUI</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --border: #262b36; --text: #d8dee9;
+    --muted: #7a8291; --accent: #4c8dff; --green: #3fb950; --yellow: #d29922;
+    --red: #f85149; --orange: #db6d28;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.6 "PingFang SC","Microsoft YaHei",sans-serif; }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 20px; }
+  header { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+  header h1 { font-size: 20px; }
+  header .ver { color: var(--muted); font-size: 12px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .card .num { font-size: 26px; font-weight: 700; }
+  .card .lbl { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  nav.tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+  nav.tabs button { background: none; border: none; color: var(--muted); padding: 10px 18px; cursor: pointer; font-size: 14px; border-bottom: 2px solid transparent; }
+  nav.tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  tr:hover td { background: rgba(255,255,255,.03); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 12px; }
+  .b-recording { background: rgba(63,185,80,.15); color: var(--green); }
+  .b-waiting, .b-offline { background: rgba(210,153,34,.15); color: var(--yellow); }
+  .b-error { background: rgba(248,81,73,.15); color: var(--red); }
+  .b-stopped, .b-unknown { background: rgba(122,130,145,.15); color: var(--muted); }
+  .btn { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 12px; cursor: pointer; font-size: 13px; }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.danger:hover { border-color: var(--red); color: var(--red); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { opacity: .9; color: #fff; }
+  .btn.sm { padding: 2px 8px; font-size: 12px; }
+  .form-row { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .form-row input, .form-row select { background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 8px 10px; font-size: 13px; }
+  .form-row input[type=url] { flex: 1; min-width: 260px; }
+  textarea { width: 100%; min-height: 60vh; background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 12px; font-family: "SF Mono",Consolas,monospace; font-size: 12px; resize: vertical; }
+  .logs { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; height: 70vh; overflow-y: auto; font-family: Consolas,monospace; font-size: 12px; }
+  .logs .row { padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,.03); white-space: pre-wrap; word-break: break-all; }
+  .log-ERROR { color: var(--red); } .log-WARNING { color: var(--yellow); } .log-SUCCESS { color: var(--green); }
+  .file-item { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+  .file-item .path { flex: 1; word-break: break-all; }
+  .file-item .size { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+  .toast { position: fixed; top: 20px; right: 20px; background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--accent); padding: 10px 16px; border-radius: 8px; z-index: 99; display: none; }
+  .toast.ok { border-left-color: var(--green); } .toast.err { border-left-color: var(--red); }
+  .muted { color: var(--muted); }
+  a { color: var(--accent); text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>📹 DouyinLiveRecorder</h1>
+    <span class="ver" id="ver"></span>
+    <span class="ver" id="addr"></span>
+  </header>
+
+  <div class="cards">
+    <div class="card"><div class="num" id="c-recording">-</div><div class="lbl">录制中</div></div>
+    <div class="card"><div class="num" id="c-tasks">-</div><div class="lbl">任务数</div></div>
+    <div class="card"><div class="num" id="c-disk">-</div><div class="lbl">磁盘剩余 (GB)</div></div>
+    <div class="card"><div class="num" id="c-platforms">-</div><div class="lbl">支持平台</div></div>
+  </div>
+
+  <nav class="tabs">
+    <button data-tab="tasks" class="active">任务管理</button>
+    <button data-tab="config">配置</button>
+    <button data-tab="logs">日志</button>
+    <button data-tab="files">录制文件</button>
+  </nav>
+
+  <!-- 任务管理 -->
+  <div class="panel active" id="panel-tasks">
+    <div class="form-row">
+      <select id="new-mode">
+        <option value="platform">🎯 选平台 + 输入ID</option>
+        <option value="url">🔗 粘贴完整网址</option>
+      </select>
+      <select id="new-platform" style="min-width:150px;">
+        <option value="">-- 选择平台 --</option>
+      </select>
+      <input type="text" id="new-id" placeholder="直播间ID / 用户名" style="width:240px;">
+      <input type="url" id="new-url" placeholder="直播间 URL，如 https://live.douyin.com/123456" style="display:none; flex:1; min-width:260px;">
+      <select id="new-quality">
+        <option value="">默认画质</option><option>原画</option><option>蓝光</option><option>超清</option><option>高清</option><option>标清</option><option>流畅</option>
+      </select>
+      <input type="text" id="new-name" placeholder="备注（可选）" style="width:120px;">
+      <button class="btn primary" onclick="addTask()">添加任务</button>
+    </div>
+    <table>
+      <thead><tr><th>状态</th><th>主播</th><th>平台</th><th>画质</th><th>已录制</th><th>URL</th><th>操作</th></tr></thead>
+      <tbody id="task-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- 配置 -->
+  <div class="panel" id="panel-config">
+    <div class="form-row">
+      <button class="btn primary" onclick="saveConfig()">保存配置</button>
+      <span class="muted">保存后需重启 main.py 生效（循环值守每轮会自动重读录制配置）</span>
+    </div>
+    <textarea id="config-text" spellcheck="false"></textarea>
+  </div>
+
+  <!-- 日志 -->
+  <div class="panel" id="panel-logs">
+    <div class="form-row"><button class="btn" onclick="loadLogs()">刷新</button><span class="muted" id="log-hint"></span></div>
+    <div class="logs" id="log-box"></div>
+  </div>
+
+  <!-- 录制文件 -->
+  <div class="panel" id="panel-files">
+    <div class="form-row"><button class="btn" onclick="loadVideos()">刷新</button><span class="muted">点击文件名播放 / 右键另存下载</span></div>
+    <div id="video-player" style="display:none; margin-bottom: 12px;">
+      <video id="player" controls style="width:100%; max-height:480px; background:#000; border-radius:8px;"></video>
+    </div>
+    <div id="file-list"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+let tasks = [];
+
+// ---------- 工具 ----------
+function toast(msg, ok = true) {
+  const t = $('#toast');
+  t.textContent = msg; t.className = 'toast ' + (ok ? 'ok' : 'err'); t.style.display = 'block';
+  clearTimeout(t._timer); t._timer = setTimeout(() => t.style.display = 'none', 2500);
+}
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) {
+    let msg = r.statusText;
+    try { msg = (await r.json()).detail || msg; } catch (e) {}
+    throw new Error(msg);
+  }
+  return r.json();
+}
+function fmtSize(n) {
+  if (!n) return '-';
+  const u = ['B','KB','MB','GB']; let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return n.toFixed(1) + ' ' + u[i];
+}
+function fmtDur(sec) {
+  sec = Math.floor(sec || 0);
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+  return (h ? h + 'h ' : '') + (h || m ? m + 'm ' : '') + s + 's';
+}
+const STATUS_LABEL = { recording:'录制中', waiting:'等待检测', offline:'未开播', error:'出错', stopped:'已暂停', unknown:'未知' };
+
+// ---------- 状态 ----------
+async function loadStatus() {
+  try {
+    const s = await api('/api/status');
+    $('#ver').textContent = 'v' + s.version;
+    $('#addr').textContent = location.origin;
+    $('#c-recording').textContent = s.recording_count;
+    $('#c-tasks').textContent = s.task_count;
+    $('#c-disk').textContent = s.disk_free_gb;
+    $('#c-platforms').textContent = s.platform_count;
+  } catch (e) {}
+}
+
+// ---------- 任务 ----------
+async function loadTasks() {
+  try {
+    const d = await api('/api/tasks');
+    tasks = d.tasks;
+    const tb = $('#task-tbody');
+    tb.innerHTML = '';
+    if (!tasks.length) {
+      tb.innerHTML = '<tr><td colspan="7" class="empty">暂无任务，请在上方添加直播间 URL</td></tr>';
+      return;
+    }
+    for (const t of tasks) {
+      const tr = document.createElement('tr');
+      const st = t.commented ? 'stopped' : (t.status || 'unknown');
+      const badge = `<span class="badge b-${st}">${t.commented ? '已暂停' : (STATUS_LABEL[t.status] || t.status)}</span>`;
+      const playBtn = t.file ? `<a class="btn sm" href="${'/videos/' + encodeURI(t.file.split('/').map(encodeURIComponent).join('/'))}" target="_blank">播放</a>` : '';
+      tr.innerHTML = `
+        <td>${badge}</td>
+        <td>${esc(t.anchor || t.name || '-')}${t.recording_seconds ? `<div class="muted">${fmtDur(t.recording_seconds)}</div>` : ''}</td>
+        <td>${esc(t.platform || '-')}</td>
+        <td>${esc(t.quality)}</td>
+        <td class="muted">${t.recording_seconds ? fmtDur(t.recording_seconds) : '-'}</td>
+        <td><span class="muted" title="${esc(t.url)}">${esc(shortUrl(t.url))}</span></td>
+        <td>
+          <button class="btn sm" onclick="toggleTask('${escAttr(t.url)}', ${!t.commented})">${t.commented ? '恢复' : '暂停'}</button>
+          <button class="btn sm danger" onclick="removeTask('${escAttr(t.url)}')">删除</button>
+          ${playBtn}
+        </td>`;
+      tb.appendChild(tr);
+    }
+  } catch (e) { toast('加载任务失败: ' + e.message, false); }
+}
+function shortUrl(u) { return u.length > 42 ? u.slice(0, 42) + '…' : u; }
+function esc(s) { return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escAttr(s) { return esc(s).replace(/'/g, '&#39;'); }
+
+// ---------- 平台/ID 快捷添加 ----------
+let platforms = [];
+async function loadPlatforms() {
+  try {
+    const d = await api('/api/platforms');
+    platforms = d.platforms;
+    const sel = $('#new-platform');
+    sel.innerHTML = '<option value="">-- 选择平台 --</option>';
+    for (const p of d.platforms) {
+      if (!p.url_template) continue;  // 无 ID 模板的平台走「粘贴完整网址」
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.name;
+      sel.appendChild(opt);
+    }
+  } catch (e) {}
+}
+function switchMode() {
+  const mode = $('#new-mode').value;
+  $('#new-platform').style.display = mode === 'platform' ? '' : 'none';
+  $('#new-id').style.display = mode === 'platform' ? '' : 'none';
+  $('#new-url').style.display = mode === 'url' ? '' : 'none';
+}
+function onPlatformChange() {
+  const p = platforms.find(x => x.name === $('#new-platform').value);
+  $('#new-id').placeholder = p && p.id_placeholder ? p.id_placeholder : '直播间ID / 用户名';
+}
+async function addTask() {
+  const mode = $('#new-mode').value;
+  const quality = $('#new-quality').value;
+  const name = $('#new-name').value.trim();
+  try {
+    if (mode === 'platform') {
+      const platform = $('#new-platform').value;
+      const id = $('#new-id').value.trim();
+      if (!platform) return toast('请选择平台', false);
+      if (!id) return toast('请输入直播间ID/用户名', false);
+      await api('/api/tasks/from-id', { method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ platform, id, quality, name }) });
+    } else {
+      const url = $('#new-url').value.trim();
+      if (!url) return toast('请输入 URL', false);
+      await api('/api/tasks', { method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ url, quality, name }) });
+    }
+    toast('任务已添加');
+    $('#new-id').value = ''; $('#new-url').value = '';
+    loadTasks(); loadStatus();
+  } catch (e) { toast('添加失败: ' + e.message, false); }
+}
+async function removeTask(url) {
+  if (!confirm('确认删除该任务？')) return;
+  try {
+    await api('/api/tasks?url=' + encodeURIComponent(url), { method: 'DELETE' });
+    toast('已删除'); loadTasks(); loadStatus();
+  } catch (e) { toast('删除失败: ' + e.message, false); }
+}
+async function toggleTask(url, commented) {
+  try {
+    await api(`/api/tasks/comment?url=${encodeURIComponent(url)}&commented=${commented}`, { method: 'PUT' });
+    loadTasks();
+  } catch (e) { toast('操作失败: ' + e.message, false); }
+}
+
+// ---------- 配置 ----------
+async function loadConfig() {
+  try {
+    const r = await fetch('/api/config');
+    $('#config-text').value = await r.text();
+  } catch (e) { toast('加载配置失败', false); }
+}
+async function saveConfig() {
+  try {
+    await api('/api/config', { method: 'PUT', headers: {'Content-Type':'text/plain'}, body: $('#config-text').value });
+    toast('配置已保存');
+  } catch (e) { toast('保存失败: ' + e.message, false); }
+}
+
+// ---------- 日志 ----------
+async function loadLogs() {
+  try {
+    const d = await api('/api/logs?limit=300');
+    const box = $('#log-box');
+    box.innerHTML = '';
+    if (!d.logs.length) { box.innerHTML = '<div class="empty">暂无日志</div>'; return; }
+    for (const l of d.logs) {
+      const row = document.createElement('div');
+      const time = new Date(l.time * 1000).toLocaleTimeString();
+      row.className = 'row log-' + (l.level || 'INFO');
+      row.textContent = `[${time}] [${l.level}] ${l.message}`;
+      box.appendChild(row);
+    }
+    box.scrollTop = box.scrollHeight;
+  } catch (e) {}
+}
+
+// ---------- 录制文件 ----------
+async function loadVideos() {
+  try {
+    const d = await api('/api/videos');
+    const box = $('#file-list');
+    box.innerHTML = '';
+    if (!d.files.length) { box.innerHTML = '<div class="empty">暂无录制文件</div>'; return; }
+    // 按路径分组显示
+    const groups = {};
+    for (const f of d.files) {
+      const parts = f.path.split('/');
+      const key = parts.length > 1 ? parts.slice(0, -1).join('/') : '根目录';
+      (groups[key] = groups[key] || []).push(f);
+    }
+    for (const [dir, files] of Object.entries(groups)) {
+      const h = document.createElement('div');
+      h.innerHTML = `<div style="margin:10px 0 4px;color:var(--accent);font-weight:600;">📁 ${esc(dir)}</div>`;
+      box.appendChild(h);
+      for (const f of files) {
+        const div = document.createElement('div');
+        div.className = 'file-item';
+        const path = f.path.split('/').map(encodeURIComponent).join('/');
+        div.innerHTML = `<a class="path" href="/videos/${path}" target="_blank" onclick="playVideo('${path}');return false;">${esc(f.name)}</a>
+          <span class="size">${fmtSize(f.size)}</span>
+          <a class="btn sm" href="/videos/${path}" download>下载</a>`;
+        box.appendChild(div);
+      }
+    }
+  } catch (e) { toast('加载文件失败: ' + e.message, false); }
+}
+function playVideo(path) {
+  const wrap = $('#video-player');
+  wrap.style.display = 'block';
+  $('#player').src = '/videos/' + path;
+  $('#player').play().catch(() => {});
+}
+
+// ---------- Tab ----------
+document.querySelectorAll('nav.tabs button').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('nav.tabs button').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    $('#panel-' + b.dataset.tab).classList.add('active');
+    if (b.dataset.tab === 'config') loadConfig();
+    if (b.dataset.tab === 'logs') loadLogs();
+    if (b.dataset.tab === 'files') loadVideos();
+  };
+});
+
+// ---------- 轮询 ----------
+loadStatus(); loadTasks(); loadPlatforms();
+$('#new-mode').onchange = switchMode;
+$('#new-platform').onchange = onPlatformChange;
+switchMode();
+setInterval(loadStatus, 5000);
+setInterval(loadTasks, 5000);
+setInterval(loadLogs, 8000);
+</script>
+</body>
+</html>

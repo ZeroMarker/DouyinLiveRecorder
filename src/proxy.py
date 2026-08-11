@@ -81,9 +81,13 @@ class ProxyDetector:
             'ftp': os.getenv('ftp_proxy')
         }
         ip = port = ""
-        for proto, proxy in proxies.items():
+        for proxy in proxies.values():
             if proxy:
-                ip, port = proxy.split(':')
+                # 兼容 http://host:port 与 host:port 两种格式
+                proxy = proxy.split('://')[-1]
+                parts = proxy.rsplit(':', 1)
+                if len(parts) == 2:
+                    ip, port = parts
                 break
         return ip, port
 

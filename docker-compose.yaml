@@ -5,8 +5,13 @@ services:
     image: ihmily/douyin-live-recorder:latest
     environment:
       - TERM=xterm-256color
+      - WEBUI_PORT=8000
     tty: true
     stdin_open: true
+    # 启用内置 WebUI：将 command 改为 ["python", "main.py", "--web"]
+    command: ["python", "main.py", "--web"]
+    ports:
+      - "8000:8000"
     #build: .
     volumes:
       - ./config:/app/config
