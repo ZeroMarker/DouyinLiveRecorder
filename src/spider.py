@@ -301,15 +301,20 @@ async def get_tiktok_stream_data(url: str, proxy_addr: OptionalStr = None, cooki
                 "Your proxy node's regional network is blocked from accessing TikTok; please switch to a node in "
                 f"another region to access. {msg.group(1) if msg else ''}"
             )
-        if 'UNEXPECTED_EOF_WHILE_READING' not in html_str:
-            try:
-                json_str = re.findall(
-                    '<script id="SIGI_STATE" type="application/json">(.*?)</script>',
-                    html_str, re.DOTALL)[0]
-            except Exception:
-                raise ConnectionError("Please check if your network can access the TikTok website normally")
-            json_data = json.loads(json_str)
-            return json_data
+        if 'UNEXPECTED_EOF_WHILE_READING' in html_str:
+            continue  # 播放器预检页，重试下一次
+        try:
+            json_str = re.findall(
+                '<script id="SIGI_STATE" type="application/json">(.*?)</script>',
+                html_str, re.DOTALL)[0]
+        except Exception:
+            # WAF 人机验证 / 风控页（无 SIGI_STATE）可能只是概率性触发，
+            # 前两次重试、最后一次仍拿不到数据才报错。
+            if i < 2:
+                continue
+            raise ConnectionError("Please check if your network can access the TikTok website normally")
+        json_data = json.loads(json_str)
+        return json_data
 
 
 @trace_error_decorator

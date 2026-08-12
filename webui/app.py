@@ -11,17 +11,21 @@ WebUI - FastAPI 应用
 """
 from __future__ import annotations
 
+import configparser
+import mimetypes
 import os
+import shutil
+import subprocess
 from typing import Optional
 
 from fastapi import Body, FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from src import state, utils
 from src.adapters import registry
-from src.url_config import QUALITIES, TaskStore
+from src.url_config import DEFAULT_QUALITY, QUALITIES, TaskStore
 
 WEBUI_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(WEBUI_DIR, 'static')
@@ -63,16 +67,126 @@ def _walk_videos(root: str) -> list[dict]:
     return result
 
 
+def _safe_path(root: str, relative_path: str) -> str | None:
+    """将 URL 中的相对路径解析到 root，拒绝目录穿越。"""
+    root = os.path.realpath(root)
+    full = os.path.realpath(os.path.join(root, relative_path))
+    try:
+        if os.path.commonpath((root, full)) != root:
+            return None
+    except ValueError:
+        return None
+    return full
+
+
+def _resolve_video_path(root: str, path: str) -> str:
+    """解析状态里的录制路径。
+
+    录制线程在知道最终文件名之前会先把输出目录写入 state，因此 WebUI
+    可能拿到的是目录而不是文件。此时选择该目录下最近更新的录制文件。
+    返回值始终是相对于下载目录的 URL 路径。
+    """
+    full = _safe_path(root, path)
+    if not full:
+        return ''
+    if os.path.isfile(full):
+        return os.path.relpath(full, root).replace('\\', '/')
+    if os.path.isdir(full):
+        files = _walk_videos(full)
+        if files:
+            latest = max(files, key=lambda item: item.get('mtime', 0))
+            return os.path.relpath(os.path.join(full, latest['path']), root).replace('\\', '/')
+    return ''
+
+
+def _iter_ffmpeg_mp4(path: str):
+    """把浏览器通常不支持的 TS/FLV/MKV 转成可渐进播放的 fragmented MP4。"""
+    ffmpeg = shutil.which('ffmpeg')
+    if not ffmpeg:
+        raise RuntimeError('系统中未找到 ffmpeg，无法播放该格式')
+    process = subprocess.Popen(
+        [ffmpeg, '-hide_banner', '-loglevel', 'error', '-i', path,
+         '-map', '0:v:0?', '-map', '0:a:0?',
+         '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k',
+         '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
+         '-f', 'mp4', 'pipe:1'],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+    )
+    try:
+        while True:
+            chunk = process.stdout.read(1024 * 1024) if process.stdout else b''
+            if not chunk:
+                break
+            yield chunk
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+        if process.stdout:
+            process.stdout.close()
+
+
 def create_app(config_file: str, url_config_file: str, downloads_path: str,
                script_path: str = '', version: str = 'v4.0.7') -> FastAPI:
     store = TaskStore(url_config_file)
     app = FastAPI(title='DouyinLiveRecorder WebUI', version=version)
+
+    def _config_default_quality() -> str:
+        """读取 config.ini 的默认画质（video_record_quality）。
+
+        新任务未选画质时写入该值，与录制进程保持同一规则：
+        在 WebUI 改完配置后，新加任务立即按新默认画质生效，无需重启。
+        """
+        try:
+            parser = configparser.RawConfigParser()
+            parser.read(config_file, encoding='utf-8-sig')
+            quality = parser.get('录制设置', 'video_record_quality').strip()
+            if quality in QUALITIES:
+                return quality
+        except Exception:
+            pass
+        return DEFAULT_QUALITY
 
     # ------------------------------------------------------------------ 页面
     @app.get('/', response_class=HTMLResponse)
     def index():
         with open(os.path.join(STATIC_DIR, 'index.html'), encoding='utf-8') as f:
             return f.read()
+
+    # ------------------------------------------------------------- PWA 资源
+    @app.get('/manifest.webmanifest')
+    def manifest():
+        """Web App Manifest（PWA 安装信息）。"""
+        return FileResponse(
+            os.path.join(STATIC_DIR, 'manifest.webmanifest'),
+            media_type='application/manifest+json',
+            headers={'Cache-Control': 'no-cache'},
+        )
+
+    @app.get('/sw.js')
+    def service_worker():
+        """Service Worker（离线缓存 / 断网回退）。no-cache 保证新版本尽快生效。"""
+        return FileResponse(
+            os.path.join(STATIC_DIR, 'sw.js'),
+            media_type='text/javascript',
+            headers={'Cache-Control': 'no-cache'},
+        )
+
+    @app.get('/icons/{name}')
+    def icons(name: str):
+        """PWA 图标。"""
+        safe = os.path.basename(name)  # 拒绝目录穿越
+        full = os.path.join(STATIC_DIR, 'icons', safe)
+        if not os.path.isfile(full):
+            raise HTTPException(404, '图标不存在')
+        return FileResponse(
+            full,
+            media_type='image/png',
+            headers={'Cache-Control': 'public, max-age=86400'},
+        )
 
     @app.get('/api/platforms')
     def api_platforms():
@@ -105,7 +219,8 @@ def create_app(config_file: str, url_config_file: str, downloads_path: str,
     # ------------------------------------------------------------------ 任务
     @app.get('/api/tasks')
     def api_tasks():
-        entries, unknown = store.load()
+        entries, unknown = TaskStore(
+            url_config_file, default_quality=_config_default_quality()).load()
         run_map = {t['url']: t for t in state.get_tasks()}
         tasks = []
         for e in entries:
@@ -119,7 +234,7 @@ def create_app(config_file: str, url_config_file: str, downloads_path: str,
                 'status': st.get('status', 'unknown'),
                 'anchor': st.get('anchor', ''),
                 'recording_seconds': st.get('recording_seconds', 0),
-                'file': st.get('file', ''),
+                'file': _resolve_video_path(downloads_path, st.get('file', '')),
                 'message': st.get('message', ''),
                 'last_check': st.get('last_check', 0),
             })
@@ -127,7 +242,9 @@ def create_app(config_file: str, url_config_file: str, downloads_path: str,
 
     @app.post('/api/tasks')
     def api_add_task(body: AddTaskBody):
-        ok = store.add(body.url, body.quality, body.name)
+        ok = TaskStore(
+            url_config_file, default_quality=_config_default_quality()).add(
+                body.url, body.quality, body.name)
         if not ok:
             raise HTTPException(400, 'URL 无效或平台不支持')
         state.add_log(f'WebUI 新增任务: {body.url}', 'INFO')
@@ -142,7 +259,9 @@ def create_app(config_file: str, url_config_file: str, downloads_path: str,
         url = adapter.build_url(body.id)
         if not url:
             raise HTTPException(400, f'平台[{adapter.name}]不支持 ID 快捷添加，请粘贴完整网址')
-        ok = store.add(url, body.quality, body.name)
+        ok = TaskStore(
+            url_config_file, default_quality=_config_default_quality()).add(
+                url, body.quality, body.name)
         if not ok:
             raise HTTPException(400, 'URL 无效或平台不支持')
         state.add_log(f'WebUI 新增任务[{adapter.name}]: {url}', 'INFO')
@@ -162,6 +281,12 @@ def create_app(config_file: str, url_config_file: str, downloads_path: str,
         ok = store.set_commented(url, commented)
         if not ok:
             raise HTTPException(404, '未找到该任务')
+        state.update_task(
+            url,
+            status=state.STOPPED if commented else state.WAITING,
+            recording_since=0,
+            message='已暂停' if commented else '等待检测',
+        )
         state.add_log(f'WebUI {"暂停" if commented else "恢复"}任务: {url}', 'INFO')
         return {'ok': True}
 
@@ -181,9 +306,13 @@ def create_app(config_file: str, url_config_file: str, downloads_path: str,
             parser.read_string(text)
         except Exception as e:
             raise HTTPException(400, f'配置格式错误: {e}')
-        with open(config_file, 'w', encoding='utf-8-sig') as f:
+        # 原子写入：先写临时文件再 rename。录制进程与 WebUI 是两个独立进程，
+        # 录制主循环每轮都会重新读这份文件；若中途读到半个文件会解析失败。
+        tmp_file = config_file + '.tmp'
+        with open(tmp_file, 'w', encoding='utf-8-sig') as f:
             f.write(text)
-        state.add_log('WebUI 已保存配置', 'INFO')
+        os.replace(tmp_file, config_file)
+        state.add_log('WebUI 已保存配置（新开任务自动生效，无需重启）', 'INFO')
         return {'ok': True}
 
     # ------------------------------------------------------------------ 日志
@@ -195,6 +324,35 @@ def create_app(config_file: str, url_config_file: str, downloads_path: str,
     @app.get('/api/videos')
     def api_videos():
         return {'files': _walk_videos(downloads_path)}
+
+    @app.get('/api/videos/play/{path:path}')
+    def api_play_video(path: str):
+        """提供浏览器播放地址。
+
+        Chrome/Firefox 不能直接播放录制默认使用的 TS、FLV、MKV。对这些
+        格式通过 ffmpeg 即时封装为 fragmented MP4；MP4/音频文件则直接返回，
+        因此不会再把文件误当成下载或打开空白页面。
+        """
+        full = _safe_path(downloads_path, path)
+        if not full or not os.path.isfile(full):
+            raise HTTPException(404, '录制文件不存在')
+
+        ext = os.path.splitext(full)[1].lower()
+        if ext in ('.mp4', '.mp3', '.m4a', '.webm', '.ogg'):
+            media_type = mimetypes.guess_type(full)[0] or 'application/octet-stream'
+            return FileResponse(full, media_type=media_type)
+
+        if not shutil.which('ffmpeg'):
+            raise HTTPException(503, '当前文件格式无法由浏览器直接播放，且系统中未找到 ffmpeg')
+        try:
+            stream = _iter_ffmpeg_mp4(full)
+            return StreamingResponse(
+                stream,
+                media_type='video/mp4',
+                headers={'Cache-Control': 'no-store'},
+            )
+        except OSError as exc:
+            raise HTTPException(503, f'启动 ffmpeg 失败: {exc}') from exc
 
     os.makedirs(downloads_path, exist_ok=True)
     app.mount('/videos', StaticFiles(directory=downloads_path), name='videos')

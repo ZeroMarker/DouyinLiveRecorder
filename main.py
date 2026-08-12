@@ -97,7 +97,15 @@ if '--web' in sys.argv:
 
 
 def signal_handler(_signal, _frame):
-    sys.exit(0)
+    """请求录制线程收尾，而不是立刻杀死进程。
+
+    直接 sys.exit 会让正在录制的 ffmpeg 和后续 MP4 转换线程一起被终止，
+    从而留下未转换的 TS 文件。设置退出标志后，各录制线程会像 WebUI
+    暂停任务一样发送 SIGINT，录制文件关闭后再由转换线程处理。
+    """
+    global exit_recording
+    exit_recording = True
+    logger.info('收到停止信号，正在结束录制并转换文件...')
 
 
 signal.signal(signal.SIGTERM, signal_handler)
@@ -391,6 +399,7 @@ def run_script(command: str) -> None:
 
 def clear_record_info(record_name: str, record_url: str) -> None:
     global monitoring
+    state.update_task(record_url, status=state.STOPPED, recording_since=0, message='已暂停')
     recording.discard(record_name)
     if record_url in url_comments and record_url in running_list:
         running_list.remove(record_url)
@@ -473,9 +482,17 @@ def check_subprocess(record_name: str, record_url: str, ffmpeg_command: list, sa
                 prefix = os.path.basename(save_file_path).rsplit('_', maxsplit=1)[0]
                 for path in file_paths:
                     if prefix in path:
-                        threading.Thread(target=converts_mp4, args=(path, delete_origin_file)).start()
+                        threading.Thread(
+                            target=converts_mp4,
+                            args=(path, delete_origin_file),
+                            daemon=False,
+                        ).start()
             else:
-                threading.Thread(target=converts_mp4, args=(save_file_path, delete_origin_file)).start()
+                threading.Thread(
+                    target=converts_mp4,
+                    args=(save_file_path, delete_origin_file),
+                    daemon=False,
+                ).start()
         print(f"\n{record_name} {stop_time} 直播录制完成\n")
 
         if script_command:
@@ -1002,7 +1019,8 @@ def start_record(url_data: tuple, count_variable: int = -1) -> None:
                                             else:
                                                 threading.Thread(
                                                     target=converts_mp4,
-                                                    args=(save_file_path, delete_origin_file)
+                                                    args=(save_file_path, delete_origin_file),
+                                                    daemon=False,
                                                 ).start()
 
                                         else:
@@ -1147,7 +1165,8 @@ def start_record(url_data: tuple, count_variable: int = -1) -> None:
                                                             try:
                                                                 threading.Thread(
                                                                     target=converts_mp4,
-                                                                    args=(path, delete_origin_file)
+                                                                    args=(path, delete_origin_file),
+                                                                    daemon=False,
                                                                 ).start()
                                                             except subprocess.CalledProcessError as e:
                                                                 logger.error(f"转码失败: {e} ")
@@ -1184,7 +1203,9 @@ def start_record(url_data: tuple, count_variable: int = -1) -> None:
                                             )
                                             if comment_end:
                                                 threading.Thread(
-                                                    target=converts_mp4, args=(save_file_path, delete_origin_file)
+                                                    target=converts_mp4,
+                                                    args=(save_file_path, delete_origin_file),
+                                                    daemon=False,
                                                 ).start()
                                                 return
 
@@ -1470,7 +1491,7 @@ while True:
             sys.exit(-1)
 
     try:
-        task_store = TaskStore(url_config_file)
+        task_store = TaskStore(url_config_file, default_quality=video_record_quality)
         url_entries, unknown_urls = task_store.load()
         url_tuples_list = [(e.quality, e.url, e.name) for e in url_entries if not e.commented]
         url_comments = [e.url for e in url_entries if e.commented]
@@ -1520,5 +1541,12 @@ while True:
         t2 = threading.Thread(target=adjust_max_request, args=(), daemon=True)
         t2.start()
         first_run = False
+
+    if exit_recording:
+        # 等待录制线程发送停止信号并关闭 ffmpeg。转换线程显式设为非 daemon，
+        # Python 会继续等待它们完成后再退出。
+        while recording:
+            time.sleep(1)
+        break
 
     time.sleep(3)

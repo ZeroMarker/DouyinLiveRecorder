@@ -4,6 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DouyinLiveRecorder WebUI</title>
+<!-- PWA -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0f1115">
+<meta name="application-name" content="DouyinLiveRecorder">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="录制管理">
 <style>
   :root {
     --bg: #0f1115; --panel: #171a21; --border: #262b36; --text: #d8dee9;
@@ -11,8 +21,10 @@
     --red: #f85149; --orange: #db6d28;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font: 14px/1.6 "PingFang SC","Microsoft YaHei",sans-serif; }
-  .wrap { max-width: 1200px; margin: 0 auto; padding: 20px; }
+  html { color-scheme: dark; }
+  body { min-width: 320px; background: var(--bg); color: var(--text); font: 14px/1.6 "PingFang SC","Microsoft YaHei",sans-serif; overflow-x: hidden; }
+  button, input, select, textarea { font: inherit; }
+  .wrap { width: 100%; max-width: 1200px; margin: 0 auto; padding: 20px; }
   header { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
   header h1 { font-size: 20px; }
   header .ver { color: var(--muted); font-size: 12px; }
@@ -20,12 +32,14 @@
   .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
   .card .num { font-size: 26px; font-weight: 700; }
   .card .lbl { color: var(--muted); font-size: 12px; margin-top: 2px; }
-  nav.tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
-  nav.tabs button { background: none; border: none; color: var(--muted); padding: 10px 18px; cursor: pointer; font-size: 14px; border-bottom: 2px solid transparent; }
+  nav.tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+  nav.tabs::-webkit-scrollbar { display: none; }
+  nav.tabs button { flex: 0 0 auto; background: none; border: none; color: var(--muted); padding: 10px 18px; cursor: pointer; font-size: 14px; border-bottom: 2px solid transparent; white-space: nowrap; }
   nav.tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
   .panel { display: none; }
   .panel.active { display: block; }
   table { width: 100%; border-collapse: collapse; }
+  .table-scroll { width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
   th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
   th { color: var(--muted); font-weight: 500; font-size: 12px; }
   tr:hover td { background: rgba(255,255,255,.03); }
@@ -42,6 +56,7 @@
   .btn.sm { padding: 2px 8px; font-size: 12px; }
   .form-row { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
   .form-row input, .form-row select { background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 8px 10px; font-size: 13px; }
+  .form-row > * { max-width: 100%; }
   .form-row input[type=url] { flex: 1; min-width: 260px; }
   textarea { width: 100%; min-height: 60vh; background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 12px; font-family: "SF Mono",Consolas,monospace; font-size: 12px; resize: vertical; }
   .logs { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; height: 70vh; overflow-y: auto; font-family: Consolas,monospace; font-size: 12px; }
@@ -53,11 +68,56 @@
   .empty { color: var(--muted); text-align: center; padding: 40px 0; }
   .toast { position: fixed; top: 20px; right: 20px; background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--accent); padding: 10px 16px; border-radius: 8px; z-index: 99; display: none; }
   .toast.ok { border-left-color: var(--green); } .toast.err { border-left-color: var(--red); }
+  #offline-banner { display: none; position: sticky; top: 0; z-index: 98; background: var(--orange); color: #fff; text-align: center; padding: 6px 12px; font-size: 13px; }
   .muted { color: var(--muted); }
   a { color: var(--accent); text-decoration: none; }
+  @media (max-width: 760px) {
+    .wrap { padding: 14px; }
+    header { gap: 6px 12px; margin-bottom: 14px; }
+    header h1 { flex-basis: 100%; font-size: 18px; }
+    .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+    .card { padding: 10px 12px; }
+    .card .num { font-size: 22px; }
+    nav.tabs { margin-inline: -14px; padding-inline: 14px; }
+    nav.tabs button { flex: 1 0 auto; min-height: 44px; padding: 9px 14px; }
+    .form-row { align-items: stretch; }
+    .form-row input, .form-row select, .form-row .btn { min-height: 42px; }
+    #panel-tasks .form-row > * { flex: 1 1 calc(50% - 8px); width: auto !important; min-width: 0 !important; }
+    #panel-tasks .form-row #new-id,
+    #panel-tasks .form-row #new-url,
+    #panel-tasks .form-row .primary { flex-basis: 100%; }
+    .table-scroll { overflow: visible; }
+    table, tbody, tr, td { display: block; width: 100%; }
+    thead { display: none; }
+    tbody { display: grid; gap: 10px; }
+    tbody tr { padding: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
+    tbody tr:hover td { background: none; }
+    tbody td { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 10px; padding: 6px 0; border: 0; overflow-wrap: anywhere; }
+    tbody td::before { content: attr(data-label); color: var(--muted); font-size: 12px; }
+    tbody td:last-child { align-items: start; }
+    tbody td:last-child .btn { min-height: 36px; margin: 0 4px 4px 0; padding-inline: 10px; }
+    tbody td.empty { display: block; padding: 28px 8px; }
+    tbody td.empty::before { display: none; }
+    textarea { min-height: 56vh; }
+    .logs { height: 62vh; }
+    .file-item { flex-wrap: wrap; padding: 10px 4px; }
+    .file-item .path { flex: 1 1 calc(100% - 70px); }
+    .file-item .size { order: 3; flex: 1; }
+    .file-item .btn { min-height: 36px; display: inline-flex; align-items: center; }
+    .toast { inset: auto 14px 14px; text-align: center; }
+  }
+  @media (max-width: 420px) {
+    .wrap { padding: 12px; }
+    nav.tabs { margin-inline: -12px; padding-inline: 12px; }
+    #panel-tasks .form-row > * { flex-basis: 100%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { scroll-behavior: auto !important; }
+  }
 </style>
 </head>
 <body>
+<div id="offline-banner">⚠ 当前离线，显示的是最近一次缓存的数据</div>
 <div class="wrap">
   <header>
     <h1>📹 DouyinLiveRecorder</h1>
@@ -97,17 +157,19 @@
       <input type="text" id="new-name" placeholder="备注（可选）" style="width:120px;">
       <button class="btn primary" onclick="addTask()">添加任务</button>
     </div>
-    <table>
-      <thead><tr><th>状态</th><th>主播</th><th>平台</th><th>画质</th><th>已录制</th><th>URL</th><th>操作</th></tr></thead>
-      <tbody id="task-tbody"></tbody>
-    </table>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>状态</th><th>主播</th><th>平台</th><th>画质</th><th>已录制</th><th>URL</th><th>操作</th></tr></thead>
+        <tbody id="task-tbody"></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- 配置 -->
   <div class="panel" id="panel-config">
     <div class="form-row">
       <button class="btn primary" onclick="saveConfig()">保存配置</button>
-      <span class="muted">保存后需重启 main.py 生效（循环值守每轮会自动重读录制配置）</span>
+      <span class="muted">保存后无需重启：录制进程每轮值守自动重读配置，新开任务立即生效</span>
     </div>
     <textarea id="config-text" spellcheck="false"></textarea>
   </div>
@@ -132,6 +194,8 @@
 
 <script>
 const $ = s => document.querySelector(s);
+const APP_BASE = new URL('./', document.baseURI);
+const appUrl = path => new URL(String(path).replace(/^\/+/, ''), APP_BASE).toString();
 let tasks = [];
 
 // ---------- 工具 ----------
@@ -141,7 +205,7 @@ function toast(msg, ok = true) {
   clearTimeout(t._timer); t._timer = setTimeout(() => t.style.display = 'none', 2500);
 }
 async function api(path, opts) {
-  const r = await fetch(path, opts);
+  const r = await fetch(appUrl(path), opts);
   if (!r.ok) {
     let msg = r.statusText;
     try { msg = (await r.json()).detail || msg; } catch (e) {}
@@ -190,15 +254,15 @@ async function loadTasks() {
       const tr = document.createElement('tr');
       const st = t.commented ? 'stopped' : (t.status || 'unknown');
       const badge = `<span class="badge b-${st}">${t.commented ? '已暂停' : (STATUS_LABEL[t.status] || t.status)}</span>`;
-      const playBtn = t.file ? `<a class="btn sm" href="${'/videos/' + encodeURI(t.file.split('/').map(encodeURIComponent).join('/'))}" target="_blank">播放</a>` : '';
+      const playBtn = t.file ? `<button class="btn sm" onclick="playVideo('${escAttr(t.file)}')">播放</button>` : '';
       tr.innerHTML = `
-        <td>${badge}</td>
-        <td>${esc(t.anchor || t.name || '-')}${t.recording_seconds ? `<div class="muted">${fmtDur(t.recording_seconds)}</div>` : ''}</td>
-        <td>${esc(t.platform || '-')}</td>
-        <td>${esc(t.quality)}</td>
-        <td class="muted">${t.recording_seconds ? fmtDur(t.recording_seconds) : '-'}</td>
-        <td><span class="muted" title="${esc(t.url)}">${esc(shortUrl(t.url))}</span></td>
-        <td>
+        <td data-label="状态">${badge}</td>
+        <td data-label="主播">${esc(t.anchor || t.name || '-')}${t.recording_seconds ? `<div class="muted">${fmtDur(t.recording_seconds)}</div>` : ''}</td>
+        <td data-label="平台">${esc(t.platform || '-')}</td>
+        <td data-label="画质">${esc(t.quality)}</td>
+        <td data-label="已录制" class="muted">${t.recording_seconds ? fmtDur(t.recording_seconds) : '-'}</td>
+        <td data-label="URL"><span class="muted" title="${esc(t.url)}">${esc(shortUrl(t.url))}</span></td>
+        <td data-label="操作">
           <button class="btn sm" onclick="toggleTask('${escAttr(t.url)}', ${!t.commented})">${t.commented ? '恢复' : '暂停'}</button>
           <button class="btn sm danger" onclick="removeTask('${escAttr(t.url)}')">删除</button>
           ${playBtn}
@@ -208,6 +272,9 @@ async function loadTasks() {
   } catch (e) { toast('加载任务失败: ' + e.message, false); }
 }
 function shortUrl(u) { return u.length > 42 ? u.slice(0, 42) + '…' : u; }
+function encodePath(base, path) {
+  return appUrl(base + path.split('/').map(encodeURIComponent).join('/'));
+}
 function esc(s) { return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function escAttr(s) { return esc(s).replace(/'/g, '&#39;'); }
 
@@ -278,14 +345,14 @@ async function toggleTask(url, commented) {
 // ---------- 配置 ----------
 async function loadConfig() {
   try {
-    const r = await fetch('/api/config');
+    const r = await fetch(appUrl('/api/config'));
     $('#config-text').value = await r.text();
   } catch (e) { toast('加载配置失败', false); }
 }
 async function saveConfig() {
   try {
     await api('/api/config', { method: 'PUT', headers: {'Content-Type':'text/plain'}, body: $('#config-text').value });
-    toast('配置已保存');
+    toast('配置已保存，新开任务自动生效');
   } catch (e) { toast('保存失败: ' + e.message, false); }
 }
 
@@ -329,19 +396,26 @@ async function loadVideos() {
         const div = document.createElement('div');
         div.className = 'file-item';
         const path = f.path.split('/').map(encodeURIComponent).join('/');
-        div.innerHTML = `<a class="path" href="/videos/${path}" target="_blank" onclick="playVideo('${path}');return false;">${esc(f.name)}</a>
+        const playPath = encodePath('/api/videos/play/', f.path);
+        div.innerHTML = `<a class="path" href="${playPath}" onclick="playVideo('${escAttr(f.path)}');return false;">${esc(f.name)}</a>
           <span class="size">${fmtSize(f.size)}</span>
-          <a class="btn sm" href="/videos/${path}" download>下载</a>`;
+          <a class="btn sm" href="${appUrl('/videos/' + path)}" download>下载</a>`;
         box.appendChild(div);
       }
     }
   } catch (e) { toast('加载文件失败: ' + e.message, false); }
 }
 function playVideo(path) {
+  const filesTab = document.querySelector('nav.tabs button[data-tab="files"]');
+  if (filesTab && !filesTab.classList.contains('active')) filesTab.click();
   const wrap = $('#video-player');
   wrap.style.display = 'block';
-  $('#player').src = '/videos/' + path;
-  $('#player').play().catch(() => {});
+  const player = $('#player');
+  player.pause();
+  player.removeAttribute('src');
+  player.load();
+  player.src = encodePath('/api/videos/play/', path);
+  player.play().catch(() => {});
 }
 
 // ---------- Tab ----------
@@ -356,6 +430,24 @@ document.querySelectorAll('nav.tabs button').forEach(b => {
     if (b.dataset.tab === 'files') loadVideos();
   };
 });
+
+// ---------- PWA ----------
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register(appUrl('/sw.js')).then(reg => {
+      console.log('ServiceWorker 已注册:', reg.scope);
+    }).catch(err => {
+      console.warn('ServiceWorker 注册失败（需 HTTPS 或 localhost）:', err);
+    });
+  });
+}
+function updateNet() {
+  const b = $('#offline-banner');
+  b.style.display = navigator.onLine ? 'none' : 'block';
+}
+window.addEventListener('offline', updateNet);
+window.addEventListener('online', () => { updateNet(); loadStatus(); loadTasks(); });
+updateNet();
 
 // ---------- 轮询 ----------
 loadStatus(); loadTasks(); loadPlatforms();

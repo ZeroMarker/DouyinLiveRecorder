@@ -31,6 +31,11 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=douyinliverecorder
 
+# 停止时给 ffmpeg 收尾和 MP4 转换留出时间，避免 systemd 强制杀进程
+TimeoutStopSec=300
+# 先只通知主进程，由主进程优雅地通知 FFmpeg；避免 systemd 同时杀掉录制进程
+KillMode=mixed
+
 # ---- 安全加固 ----
 NoNewPrivileges=true
 PrivateTmp=true
