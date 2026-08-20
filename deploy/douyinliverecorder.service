@@ -10,13 +10,14 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-User=douyinrec
-Group=douyinrec
+User=@SVC_USER@
+Group=@SVC_USER@
 WorkingDirectory=@INSTALL_DIR@
 
 # DLR_NO_INPUT=1: URL 为空时不再阻塞等待 stdin，通过 WebUI 添加任务
 # WEBUI_PORT: 内置 WebUI 端口
 Environment=DLR_NO_INPUT=1
+Environment=WEBUI_HOST=127.0.0.1
 Environment=WEBUI_PORT=8000
 Environment=PYTHONUNBUFFERED=1
 Environment=TERM=xterm-256color

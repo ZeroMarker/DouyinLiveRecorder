@@ -162,6 +162,7 @@ command -v systemctl &>/dev/null || die "未检测到 systemd（容器内请使�
 log "生成 systemd 单元文件 ..."
 sed -e "s|@INSTALL_DIR@|$INSTALL_DIR|g" \
     -e "s|@PYTHON_BIN@|$PYTHON_BIN|g" \
+    -e "s|@SVC_USER@|$SVC_USER|g" \
     "$SCRIPT_DIR/douyinliverecorder.service" > "/etc/systemd/system/${SERVICE_NAME}.service"
 sed -i "s|^Environment=WEBUI_PORT=.*|Environment=WEBUI_PORT=${WEBUI_PORT}|" "/etc/systemd/system/${SERVICE_NAME}.service"
 
@@ -184,7 +185,7 @@ cat <<EOF
  服务名      : $SERVICE_NAME
  安装目录    : $INSTALL_DIR
  运行用户    : $SVC_USER
- WebUI 地址  : http://<本机IP>:${WEBUI_PORT}
+ WebUI 上游  : http://127.0.0.1:${WEBUI_PORT}（仅本机监听，请通过反向代理访问）
  任务文件    : $INSTALL_DIR/config/URL_config.ini（可用 WebUI 管理）
 ---------------------------------------------------------------------
  常用命令:

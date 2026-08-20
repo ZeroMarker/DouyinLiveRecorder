@@ -83,15 +83,16 @@ clear_command = "cls" if os_type == 'nt' else "clear"
 color_obj = utils.Color()
 os.environ['PATH'] = ffmpeg_path + os.pathsep + current_env_path
 
-# 内置 WebUI：python main.py --web（端口可用环境变量 WEBUI_PORT 覆盖，默认 8000）
+# 内置 WebUI：python main.py --web（监听地址和端口可用环境变量覆盖）
 if '--web' in sys.argv:
     try:
         from webui.server import start_in_background
         from src import state as _state
         logger.add(lambda m: _state.add_log(m.record['message'], m.record['level'].name), level='INFO')
+        webui_host = os.environ.get('WEBUI_HOST', '0.0.0.0')
         webui_port = int(os.environ.get('WEBUI_PORT', '8000'))
-        start_in_background(port=webui_port, version=version)
-        print(f'WebUI 已启动: http://127.0.0.1:{webui_port}')
+        start_in_background(host=webui_host, port=webui_port, version=version)
+        print(f'WebUI 已启动: http://{webui_host}:{webui_port}')
     except Exception as e:
         logger.error(f'WebUI 启动失败: {e}')
 

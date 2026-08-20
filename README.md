@@ -143,7 +143,8 @@ docker compose up -d
 
 ```bash
 # 一键安装（自动安装 ffmpeg/nodejs、创建专用用户、注册开机自启）
-sudo ./deploy/install.sh
+# 本机 8000 已被其他服务占用，因此使用 8001
+sudo ./deploy/install.sh --port 8001
 
 # 可选参数
 sudo ./deploy/install.sh --port 9000 --install-dir /opt/DouyinLiveRecorder --user douyinrec
