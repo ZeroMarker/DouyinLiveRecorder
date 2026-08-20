@@ -157,6 +157,22 @@ systemctl restart douyinliverecorder
 sudo ./deploy/install.sh --uninstall --purge
 ```
 
+**Caddy 反向代理**
+
+systemd 服务默认仅监听本机地址。若服务器已有 Caddy 站点和 Basic Auth，请保留现有认证配置，只把以下路径代理规则合并到对应的站点块中，不要覆盖整个 Caddyfile：
+
+```caddyfile
+your-domain.example {
+    # 保留站点现有的 Basic Auth 等配置
+    redir /douyin /douyin/ 308
+    handle_path /douyin/* {
+        reverse_proxy 127.0.0.1:8001
+    }
+}
+```
+
+示例使用安装命令中的 `8001` 端口；若通过 `--port` 指定了其他端口，请同步修改 `reverse_proxy`。合并后可执行 `caddy validate --config /etc/caddy/Caddyfile` 检查配置，再重新加载 Caddy。WebUI 访问路径为 `https://your-domain.example/douyin/`，并受站点现有 Basic Auth 保护。
+
 服务说明：
 - 以专用系统用户 `douyinrec` 运行，`Restart=on-failure` 崩溃自动拉起
 - 服务模式下 `DLR_NO_INPUT=1`：URL 列表为空时不再阻塞等待输入，直接通过 WebUI 添加任务
