@@ -25,9 +25,14 @@
   body { min-width: 320px; background: var(--bg); color: var(--text); font: 14px/1.6 "PingFang SC","Microsoft YaHei",sans-serif; overflow-x: hidden; }
   button, input, select, textarea { font: inherit; }
   .wrap { width: 100%; max-width: 1200px; margin: 0 auto; padding: 20px; }
-  header { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
   header h1 { font-size: 20px; }
   header .ver { color: var(--muted); font-size: 12px; }
+  header .spacer { flex: 1; }
+  .connection { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+  .connection::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--yellow); }
+  .connection.online::before { background: var(--green); box-shadow: 0 0 0 3px rgba(63,185,80,.12); }
+  .connection.offline::before { background: var(--red); }
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
   .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
   .card .num { font-size: 26px; font-weight: 700; }
@@ -54,10 +59,15 @@
   .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   .btn.primary:hover { opacity: .9; color: #fff; }
   .btn.sm { padding: 2px 8px; font-size: 12px; }
+  .btn:disabled { opacity: .5; cursor: wait; pointer-events: none; }
   .form-row { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
   .form-row input, .form-row select { background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 8px 10px; font-size: 13px; }
   .form-row > * { max-width: 100%; }
   .form-row input[type=url] { flex: 1; min-width: 260px; }
+  .toolbar { display: flex; align-items: center; gap: 8px; margin: -4px 0 12px; flex-wrap: wrap; }
+  .toolbar input, .toolbar select { background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 9px; }
+  .toolbar input[type=search] { width: min(280px, 100%); }
+  .toolbar .summary { margin-left: auto; color: var(--muted); font-size: 12px; }
   textarea { width: 100%; min-height: 60vh; background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 12px; font-family: "SF Mono",Consolas,monospace; font-size: 12px; resize: vertical; }
   .logs { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; height: 70vh; overflow-y: auto; font-family: Consolas,monospace; font-size: 12px; }
   .logs .row { padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,.03); white-space: pre-wrap; word-break: break-all; }
@@ -68,6 +78,8 @@
   .empty { color: var(--muted); text-align: center; padding: 40px 0; }
   .toast { position: fixed; top: 20px; right: 20px; background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--accent); padding: 10px 16px; border-radius: 8px; z-index: 99; display: none; }
   .toast.ok { border-left-color: var(--green); } .toast.err { border-left-color: var(--red); }
+  .dirty { color: var(--yellow); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   #offline-banner { display: none; position: sticky; top: 0; z-index: 98; background: var(--orange); color: #fff; text-align: center; padding: 6px 12px; font-size: 13px; }
   .muted { color: var(--muted); }
   a { color: var(--accent); text-decoration: none; }
@@ -75,6 +87,7 @@
     .wrap { padding: 14px; }
     header { gap: 6px 12px; margin-bottom: 14px; }
     header h1 { flex-basis: 100%; font-size: 18px; }
+    header .spacer { display: none; }
     .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
     .card { padding: 10px 12px; }
     .card .num { font-size: 22px; }
@@ -86,6 +99,9 @@
     #panel-tasks .form-row #new-id,
     #panel-tasks .form-row #new-url,
     #panel-tasks .form-row .primary { flex-basis: 100%; }
+    .toolbar > * { min-height: 40px; }
+    .toolbar input[type=search] { flex: 1 1 100%; width: 100%; }
+    .toolbar .summary { margin-left: 0; flex: 1; }
     .table-scroll { overflow: visible; }
     table, tbody, tr, td { display: block; width: 100%; }
     thead { display: none; }
@@ -123,6 +139,9 @@
     <h1>📹 DouyinLiveRecorder</h1>
     <span class="ver" id="ver"></span>
     <span class="ver" id="addr"></span>
+    <span class="spacer"></span>
+    <span class="connection" id="connection">正在连接</span>
+    <span class="ver" id="last-update"></span>
   </header>
 
   <div class="cards">
@@ -132,30 +151,42 @@
     <div class="card"><div class="num" id="c-platforms">-</div><div class="lbl">支持平台</div></div>
   </div>
 
-  <nav class="tabs">
-    <button data-tab="tasks" class="active">任务管理</button>
-    <button data-tab="config">配置</button>
-    <button data-tab="logs">日志</button>
-    <button data-tab="files">录制文件</button>
+  <nav class="tabs" role="tablist" aria-label="管理功能">
+    <button data-tab="tasks" class="active" role="tab" aria-selected="true">任务管理</button>
+    <button data-tab="config" role="tab" aria-selected="false">配置</button>
+    <button data-tab="logs" role="tab" aria-selected="false">日志</button>
+    <button data-tab="files" role="tab" aria-selected="false">录制文件</button>
   </nav>
 
   <!-- 任务管理 -->
   <div class="panel active" id="panel-tasks">
-    <div class="form-row">
-      <select id="new-mode">
+    <form class="form-row" id="task-form">
+      <select id="new-mode" aria-label="添加方式">
         <option value="platform">🎯 选平台 + 输入ID</option>
         <option value="url">🔗 粘贴完整网址</option>
       </select>
-      <select id="new-platform" style="min-width:150px;">
+      <select id="new-platform" style="min-width:150px;" aria-label="直播平台">
         <option value="">-- 选择平台 --</option>
       </select>
-      <input type="text" id="new-id" placeholder="直播间ID / 用户名" style="width:240px;">
-      <input type="url" id="new-url" placeholder="直播间 URL，如 https://live.douyin.com/123456" style="display:none; flex:1; min-width:260px;">
-      <select id="new-quality">
+      <input type="text" id="new-id" placeholder="直播间ID / 用户名" style="width:240px;" aria-label="直播间 ID 或用户名">
+      <input type="url" id="new-url" placeholder="直播间 URL，如 https://live.douyin.com/123456" style="display:none; flex:1; min-width:260px;" aria-label="直播间 URL">
+      <select id="new-quality" aria-label="录制画质">
         <option value="">默认画质</option><option>原画</option><option>蓝光</option><option>超清</option><option>高清</option><option>标清</option><option>流畅</option>
       </select>
-      <input type="text" id="new-name" placeholder="备注（可选）" style="width:120px;">
-      <button class="btn primary" onclick="addTask()">添加任务</button>
+      <input type="text" id="new-name" placeholder="备注（可选）" style="width:120px;" aria-label="任务备注">
+      <button class="btn primary" id="add-task" type="submit">添加任务</button>
+    </form>
+    <div class="toolbar">
+      <input type="search" id="task-search" placeholder="搜索主播、平台或 URL" aria-label="搜索任务">
+      <select id="task-filter" aria-label="筛选任务状态">
+        <option value="all">全部状态</option>
+        <option value="recording">录制中</option>
+        <option value="waiting">等待/未开播</option>
+        <option value="stopped">已暂停</option>
+        <option value="error">出错</option>
+      </select>
+      <button class="btn" id="refresh-tasks" type="button">刷新</button>
+      <span class="summary" id="task-summary"></span>
     </div>
     <div class="table-scroll">
       <table>
@@ -168,21 +199,22 @@
   <!-- 配置 -->
   <div class="panel" id="panel-config">
     <div class="form-row">
-      <button class="btn primary" onclick="saveConfig()">保存配置</button>
-      <span class="muted">保存后无需重启：录制进程每轮值守自动重读配置，新开任务立即生效</span>
+      <button class="btn primary" id="save-config" type="button">保存配置</button>
+      <button class="btn" id="reload-config" type="button">重新载入</button>
+      <span class="muted" id="config-hint">保存后无需重启：录制进程每轮值守自动重读配置</span>
     </div>
     <textarea id="config-text" spellcheck="false"></textarea>
   </div>
 
   <!-- 日志 -->
   <div class="panel" id="panel-logs">
-    <div class="form-row"><button class="btn" onclick="loadLogs()">刷新</button><span class="muted" id="log-hint"></span></div>
+    <div class="form-row"><button class="btn" id="refresh-logs" type="button">刷新</button><label class="muted"><input type="checkbox" id="log-autoscroll" checked> 自动滚动</label><span class="muted" id="log-hint"></span></div>
     <div class="logs" id="log-box"></div>
   </div>
 
   <!-- 录制文件 -->
   <div class="panel" id="panel-files">
-    <div class="form-row"><button class="btn" onclick="loadVideos()">刷新</button><span class="muted">点击文件名播放 / 右键另存下载</span></div>
+    <div class="form-row"><button class="btn" id="refresh-videos" type="button">刷新</button><span class="muted">点击文件名播放 / 右键另存下载</span></div>
     <div id="video-player" style="display:none; margin-bottom: 12px;">
       <video id="player" controls style="width:100%; max-height:480px; background:#000; border-radius:8px;"></video>
     </div>
@@ -190,28 +222,64 @@
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
 const $ = s => document.querySelector(s);
 const APP_BASE = new URL('./', document.baseURI);
 const appUrl = path => new URL(String(path).replace(/^\/+/, ''), APP_BASE).toString();
 let tasks = [];
+let videos = [];
+let activeTab = 'tasks';
+let configOriginal = '';
+let configDirty = false;
+const inFlight = new Set();
 
 // ---------- 工具 ----------
 function toast(msg, ok = true) {
   const t = $('#toast');
   t.textContent = msg; t.className = 'toast ' + (ok ? 'ok' : 'err'); t.style.display = 'block';
-  clearTimeout(t._timer); t._timer = setTimeout(() => t.style.display = 'none', 2500);
+  clearTimeout(t._timer); t._timer = setTimeout(() => t.style.display = 'none', 3200);
 }
-async function api(path, opts) {
-  const r = await fetch(appUrl(path), opts);
+async function request(path, opts = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  let r;
+  try {
+    r = await fetch(appUrl(path), { ...opts, signal: controller.signal });
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('请求超时');
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
   if (!r.ok) {
     let msg = r.statusText;
     try { msg = (await r.json()).detail || msg; } catch (e) {}
-    throw new Error(msg);
+    throw new Error(msg || `HTTP ${r.status}`);
   }
-  return r.json();
+  return r;
+}
+async function api(path, opts) { return (await request(path, opts)).json(); }
+async function apiText(path, opts) { return (await request(path, opts)).text(); }
+async function once(key, worker) {
+  if (inFlight.has(key)) return;
+  inFlight.add(key);
+  try { return await worker(); } finally { inFlight.delete(key); }
+}
+async function withBusy(button, worker) {
+  const old = button.textContent;
+  button.disabled = true;
+  button.textContent = '处理中…';
+  try { return await worker(); } finally { button.disabled = false; button.textContent = old; }
+}
+function setConnection(online) {
+  const el = $('#connection');
+  el.textContent = online ? '服务正常' : '连接失败';
+  el.className = 'connection ' + (online ? 'online' : 'offline');
+}
+function markUpdated() {
+  $('#last-update').textContent = '更新于 ' + new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
 }
 function fmtSize(n) {
   if (!n) return '-';
@@ -225,36 +293,62 @@ function fmtDur(sec) {
   return (h ? h + 'h ' : '') + (h || m ? m + 'm ' : '') + s + 's';
 }
 const STATUS_LABEL = { recording:'录制中', waiting:'等待检测', offline:'未开播', error:'出错', stopped:'已暂停', unknown:'未知' };
+const STATUS_CLASS = new Set(Object.keys(STATUS_LABEL));
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function shortUrl(u) { return u.length > 48 ? u.slice(0, 48) + '…' : u; }
+function encodePath(base, path) { return appUrl(base + path.split('/').map(encodeURIComponent).join('/')); }
 
 // ---------- 状态 ----------
 async function loadStatus() {
-  try {
-    const s = await api('/api/status');
-    $('#ver').textContent = 'v' + s.version;
-    $('#addr').textContent = location.origin;
-    $('#c-recording').textContent = s.recording_count;
-    $('#c-tasks').textContent = s.task_count;
-    $('#c-disk').textContent = s.disk_free_gb;
-    $('#c-platforms').textContent = s.platform_count;
-  } catch (e) {}
+  return once('status', async () => {
+    try {
+      const s = await api('/api/status');
+      const version = String(s.version || '');
+      $('#ver').textContent = version.startsWith('v') ? version : 'v' + version;
+      $('#addr').textContent = location.origin + APP_BASE.pathname.replace(/\/$/, '');
+      $('#c-recording').textContent = s.recording_count;
+      $('#c-tasks').textContent = s.task_count;
+      $('#c-disk').textContent = s.disk_free_gb;
+      $('#c-platforms').textContent = s.platform_count;
+      setConnection(true); markUpdated();
+    } catch (e) { setConnection(false); }
+  });
 }
 
 // ---------- 任务 ----------
 async function loadTasks() {
-  try {
-    const d = await api('/api/tasks');
-    tasks = d.tasks;
-    const tb = $('#task-tbody');
-    tb.innerHTML = '';
-    if (!tasks.length) {
-      tb.innerHTML = '<tr><td colspan="7" class="empty">暂无任务，请在上方添加直播间 URL</td></tr>';
-      return;
-    }
-    for (const t of tasks) {
+  return once('tasks', async () => {
+    try {
+      const d = await api('/api/tasks');
+      tasks = d.tasks || [];
+      renderTasks();
+    } catch (e) { toast('加载任务失败: ' + e.message, false); }
+  });
+}
+function renderTasks() {
+  const query = $('#task-search').value.trim().toLowerCase();
+  const filter = $('#task-filter').value;
+  const filtered = tasks.filter(t => {
+    const status = t.commented ? 'stopped' : (t.status || 'unknown');
+    const statusMatch = filter === 'all' || status === filter ||
+      (filter === 'waiting' && ['waiting', 'offline', 'unknown'].includes(status));
+    const haystack = [t.anchor, t.name, t.platform, t.url].join(' ').toLowerCase();
+    return statusMatch && (!query || haystack.includes(query));
+  });
+  const tb = $('#task-tbody');
+  tb.innerHTML = '';
+  $('#task-summary').textContent = `显示 ${filtered.length} / ${tasks.length} 个任务`;
+  if (!filtered.length) {
+    const message = tasks.length ? '没有符合筛选条件的任务' : '暂无任务，请在上方添加直播间 URL';
+    tb.innerHTML = `<tr><td colspan="7" class="empty">${message}</td></tr>`;
+    return;
+  }
+  for (const t of filtered) {
       const tr = document.createElement('tr');
-      const st = t.commented ? 'stopped' : (t.status || 'unknown');
-      const badge = `<span class="badge b-${st}">${t.commented ? '已暂停' : (STATUS_LABEL[t.status] || t.status)}</span>`;
-      const playBtn = t.file ? `<button class="btn sm" onclick="playVideo('${escAttr(t.file)}')">播放</button>` : '';
+      const rawStatus = t.commented ? 'stopped' : (t.status || 'unknown');
+      const st = STATUS_CLASS.has(rawStatus) ? rawStatus : 'unknown';
+      const badge = `<span class="badge b-${st}">${t.commented ? '已暂停' : (STATUS_LABEL[rawStatus] || '未知')}</span>`;
+      const playBtn = t.file ? '<button class="btn sm" data-action="play" type="button">播放</button>' : '';
       tr.innerHTML = `
         <td data-label="状态">${badge}</td>
         <td data-label="主播">${esc(t.anchor || t.name || '-')}${t.recording_seconds ? `<div class="muted">${fmtDur(t.recording_seconds)}</div>` : ''}</td>
@@ -263,20 +357,17 @@ async function loadTasks() {
         <td data-label="已录制" class="muted">${t.recording_seconds ? fmtDur(t.recording_seconds) : '-'}</td>
         <td data-label="URL"><span class="muted" title="${esc(t.url)}">${esc(shortUrl(t.url))}</span></td>
         <td data-label="操作">
-          <button class="btn sm" onclick="toggleTask('${escAttr(t.url)}', ${!t.commented})">${t.commented ? '恢复' : '暂停'}</button>
-          <button class="btn sm danger" onclick="removeTask('${escAttr(t.url)}')">删除</button>
+          <button class="btn sm" data-action="toggle" data-commented="${!t.commented}" type="button">${t.commented ? '恢复' : '暂停'}</button>
+          <button class="btn sm danger" data-action="remove" type="button">删除</button>
           ${playBtn}
         </td>`;
+      tr.querySelectorAll('[data-action]').forEach(button => {
+        button.dataset.url = t.url;
+        if (t.file) button.dataset.path = t.file;
+      });
       tb.appendChild(tr);
-    }
-  } catch (e) { toast('加载任务失败: ' + e.message, false); }
+  }
 }
-function shortUrl(u) { return u.length > 42 ? u.slice(0, 42) + '…' : u; }
-function encodePath(base, path) {
-  return appUrl(base + path.split('/').map(encodeURIComponent).join('/'));
-}
-function esc(s) { return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function escAttr(s) { return esc(s).replace(/'/g, '&#39;'); }
 
 // ---------- 平台/ID 快捷添加 ----------
 let platforms = [];
@@ -293,7 +384,7 @@ async function loadPlatforms() {
       opt.textContent = p.name;
       sel.appendChild(opt);
     }
-  } catch (e) {}
+  } catch (e) { toast('加载平台列表失败: ' + e.message, false); }
 }
 function switchMode() {
   const mode = $('#new-mode').value;
@@ -305,11 +396,13 @@ function onPlatformChange() {
   const p = platforms.find(x => x.name === $('#new-platform').value);
   $('#new-id').placeholder = p && p.id_placeholder ? p.id_placeholder : '直播间ID / 用户名';
 }
-async function addTask() {
+async function addTask(event) {
+  event.preventDefault();
   const mode = $('#new-mode').value;
   const quality = $('#new-quality').value;
   const name = $('#new-name').value.trim();
-  try {
+  const button = $('#add-task');
+  await withBusy(button, async () => { try {
     if (mode === 'platform') {
       const platform = $('#new-platform').value;
       const id = $('#new-id').value.trim();
@@ -325,42 +418,54 @@ async function addTask() {
     }
     toast('任务已添加');
     $('#new-id').value = ''; $('#new-url').value = '';
-    loadTasks(); loadStatus();
-  } catch (e) { toast('添加失败: ' + e.message, false); }
+    await Promise.all([loadTasks(), loadStatus()]);
+  } catch (e) { toast('添加失败: ' + e.message, false); } });
 }
-async function removeTask(url) {
+async function removeTask(url, button) {
   if (!confirm('确认删除该任务？')) return;
-  try {
+  await withBusy(button, async () => { try {
     await api('/api/tasks?url=' + encodeURIComponent(url), { method: 'DELETE' });
-    toast('已删除'); loadTasks(); loadStatus();
-  } catch (e) { toast('删除失败: ' + e.message, false); }
+    toast('已删除'); await Promise.all([loadTasks(), loadStatus()]);
+  } catch (e) { toast('删除失败: ' + e.message, false); } });
 }
-async function toggleTask(url, commented) {
-  try {
+async function toggleTask(url, commented, button) {
+  await withBusy(button, async () => { try {
     await api(`/api/tasks/comment?url=${encodeURIComponent(url)}&commented=${commented}`, { method: 'PUT' });
-    loadTasks();
-  } catch (e) { toast('操作失败: ' + e.message, false); }
+    await loadTasks();
+  } catch (e) { toast('操作失败: ' + e.message, false); } });
 }
 
 // ---------- 配置 ----------
-async function loadConfig() {
-  try {
-    const r = await fetch(appUrl('/api/config'));
-    $('#config-text').value = await r.text();
-  } catch (e) { toast('加载配置失败', false); }
+async function loadConfig(force = false) {
+  if (configDirty && !force && !confirm('当前配置尚未保存，确认重新载入吗？')) return;
+  return once('config', async () => { try {
+    configOriginal = await apiText('/api/config');
+    $('#config-text').value = configOriginal;
+    setConfigDirty(false);
+  } catch (e) { toast('加载配置失败: ' + e.message, false); } });
 }
-async function saveConfig() {
-  try {
+function setConfigDirty(dirty) {
+  configDirty = dirty;
+  const hint = $('#config-hint');
+  hint.textContent = dirty ? '有未保存的更改' : '保存后无需重启：录制进程每轮值守自动重读配置';
+  hint.className = dirty ? 'dirty' : 'muted';
+}
+async function saveConfig(button) {
+  await withBusy(button, async () => { try {
     await api('/api/config', { method: 'PUT', headers: {'Content-Type':'text/plain'}, body: $('#config-text').value });
+    configOriginal = $('#config-text').value;
+    setConfigDirty(false);
     toast('配置已保存，新开任务自动生效');
-  } catch (e) { toast('保存失败: ' + e.message, false); }
+  } catch (e) { toast('保存失败: ' + e.message, false); } });
 }
 
 // ---------- 日志 ----------
 async function loadLogs() {
-  try {
+  if (activeTab !== 'logs') return;
+  return once('logs', async () => { try {
     const d = await api('/api/logs?limit=300');
     const box = $('#log-box');
+    const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 48;
     box.innerHTML = '';
     if (!d.logs.length) { box.innerHTML = '<div class="empty">暂无日志</div>'; return; }
     for (const l of d.logs) {
@@ -370,20 +475,26 @@ async function loadLogs() {
       row.textContent = `[${time}] [${l.level}] ${l.message}`;
       box.appendChild(row);
     }
-    box.scrollTop = box.scrollHeight;
-  } catch (e) {}
+    if ($('#log-autoscroll').checked || nearBottom) box.scrollTop = box.scrollHeight;
+    $('#log-hint').textContent = `${d.logs.length} 条 · ${new Date().toLocaleTimeString()}`;
+  } catch (e) { toast('加载日志失败: ' + e.message, false); } });
 }
 
 // ---------- 录制文件 ----------
 async function loadVideos() {
-  try {
+  return once('videos', async () => { try {
     const d = await api('/api/videos');
+    videos = (d.files || []).sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
+    renderVideos();
+  } catch (e) { toast('加载文件失败: ' + e.message, false); } });
+}
+function renderVideos() {
     const box = $('#file-list');
     box.innerHTML = '';
-    if (!d.files.length) { box.innerHTML = '<div class="empty">暂无录制文件</div>'; return; }
+    if (!videos.length) { box.innerHTML = '<div class="empty">暂无录制文件</div>'; return; }
     // 按路径分组显示
     const groups = {};
-    for (const f of d.files) {
+    for (const f of videos) {
       const parts = f.path.split('/');
       const key = parts.length > 1 ? parts.slice(0, -1).join('/') : '根目录';
       (groups[key] = groups[key] || []).push(f);
@@ -397,13 +508,13 @@ async function loadVideos() {
         div.className = 'file-item';
         const path = f.path.split('/').map(encodeURIComponent).join('/');
         const playPath = encodePath('/api/videos/play/', f.path);
-        div.innerHTML = `<a class="path" href="${playPath}" onclick="playVideo('${escAttr(f.path)}');return false;">${esc(f.name)}</a>
+        div.innerHTML = `<a class="path" href="${playPath}" data-play>${esc(f.name)}</a>
           <span class="size">${fmtSize(f.size)}</span>
           <a class="btn sm" href="${appUrl('/videos/' + path)}" download>下载</a>`;
+        div.querySelector('[data-play]').dataset.path = f.path;
         box.appendChild(div);
       }
     }
-  } catch (e) { toast('加载文件失败: ' + e.message, false); }
 }
 function playVideo(path) {
   const filesTab = document.querySelector('nav.tabs button[data-tab="files"]');
@@ -421,13 +532,16 @@ function playVideo(path) {
 // ---------- Tab ----------
 document.querySelectorAll('nav.tabs button').forEach(b => {
   b.onclick = () => {
-    document.querySelectorAll('nav.tabs button').forEach(x => x.classList.remove('active'));
+    activeTab = b.dataset.tab;
+    document.querySelectorAll('nav.tabs button').forEach(x => {
+      x.classList.toggle('active', x === b);
+      x.setAttribute('aria-selected', x === b ? 'true' : 'false');
+    });
     document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
-    b.classList.add('active');
-    $('#panel-' + b.dataset.tab).classList.add('active');
-    if (b.dataset.tab === 'config') loadConfig();
-    if (b.dataset.tab === 'logs') loadLogs();
-    if (b.dataset.tab === 'files') loadVideos();
+    $('#panel-' + activeTab).classList.add('active');
+    if (activeTab === 'config' && !configOriginal && !configDirty) loadConfig();
+    if (activeTab === 'logs') loadLogs();
+    if (activeTab === 'files') loadVideos();
   };
 });
 
@@ -444,6 +558,7 @@ if ('serviceWorker' in navigator) {
 function updateNet() {
   const b = $('#offline-banner');
   b.style.display = navigator.onLine ? 'none' : 'block';
+  if (!navigator.onLine) setConnection(false);
 }
 window.addEventListener('offline', updateNet);
 window.addEventListener('online', () => { updateNet(); loadStatus(); loadTasks(); });
@@ -453,10 +568,38 @@ updateNet();
 loadStatus(); loadTasks(); loadPlatforms();
 $('#new-mode').onchange = switchMode;
 $('#new-platform').onchange = onPlatformChange;
+$('#task-form').onsubmit = addTask;
+$('#task-search').oninput = renderTasks;
+$('#task-filter').onchange = renderTasks;
+$('#refresh-tasks').onclick = () => { loadStatus(); loadTasks(); };
+$('#task-tbody').onclick = event => {
+  const button = event.target.closest('button[data-action]');
+  if (!button) return;
+  if (button.dataset.action === 'remove') removeTask(button.dataset.url, button);
+  if (button.dataset.action === 'toggle') toggleTask(button.dataset.url, button.dataset.commented === 'true', button);
+  if (button.dataset.action === 'play') playVideo(button.dataset.path);
+};
+$('#save-config').onclick = event => saveConfig(event.currentTarget);
+$('#reload-config').onclick = () => loadConfig();
+$('#config-text').oninput = () => setConfigDirty($('#config-text').value !== configOriginal);
+$('#refresh-logs').onclick = loadLogs;
+$('#refresh-videos').onclick = loadVideos;
+$('#file-list').onclick = event => {
+  const link = event.target.closest('[data-play]');
+  if (!link) return;
+  event.preventDefault(); playVideo(link.dataset.path);
+};
+window.addEventListener('beforeunload', event => {
+  if (!configDirty) return;
+  event.preventDefault(); event.returnValue = '';
+});
 switchMode();
-setInterval(loadStatus, 5000);
-setInterval(loadTasks, 5000);
-setInterval(loadLogs, 8000);
+setInterval(() => {
+  if (document.hidden || !navigator.onLine) return;
+  loadStatus();
+  if (activeTab === 'tasks') loadTasks();
+  if (activeTab === 'logs') loadLogs();
+}, 5000);
 </script>
 </body>
 </html>

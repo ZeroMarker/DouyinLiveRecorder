@@ -179,6 +179,12 @@ r = client.get('/api/config')
 check('GET /api/config 文本', r.status_code == 200)
 r = client.get('/')
 check('GET / 页面', r.status_code == 200 and 'DouyinLiveRecorder' in r.text)
+check('WebUI 含任务搜索与连接状态',
+      'id="task-search"' in r.text and 'id="connection"' in r.text)
+check('WebUI 操作不使用内联事件', 'onclick=' not in r.text and 'onchange=' not in r.text)
+r = client.get('/sw.js')
+check('Service Worker 不缓存配置与日志',
+      r.status_code == 200 and "path === '/api/config'" in r.text and "path.startsWith('/api/logs')" in r.text)
 r = client.post('/api/tasks', json={'url': 'https://live.douyin.com/999', 'quality': '超清', 'name': 'webui测试'})
 check('POST /api/tasks', r.status_code == 200)
 r = client.post('/api/tasks', json={'url': 'https://bad.unknown/1'})
