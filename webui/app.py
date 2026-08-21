@@ -19,6 +19,7 @@ import subprocess
 from typing import Optional
 
 from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -134,6 +135,17 @@ def create_app(config_file: str, url_config_file: str, downloads_path: str,
     store = TaskStore(url_config_file)
     app = FastAPI(title='DouyinLiveRecorder WebUI', version=version)
 
+    # 跨源仅放行本地开发端口与 Tauri webview 源（桌面端走插件转发，正常不触发）
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            'http://localhost:1420', 'http://127.0.0.1:1420',
+            'tauri://localhost', 'http://tauri.localhost',
+        ],
+        allow_methods=['*'],
+        allow_headers=['*'],
+    )
+
     def _config_default_quality() -> str:
         """读取 config.ini 的默认画质（video_record_quality）。
 
@@ -203,6 +215,20 @@ def create_app(config_file: str, url_config_file: str, downloads_path: str,
         }
 
     # ------------------------------------------------------------------ 状态
+    @app.get('/api/health')
+    def api_health():
+        """桌面端 sidecar 就绪探测。"""
+        return {'ok': True, 'version': version}
+
+    @app.get('/api/meta')
+    def api_meta():
+        """桌面端需要的路径信息（下载目录、配置目录）。"""
+        return {
+            'downloads_dir': downloads_path,
+            'config_file': config_file,
+            'url_config_file': url_config_file,
+        }
+
     @app.get('/api/status')
     def api_status():
         entries, _ = store.load()

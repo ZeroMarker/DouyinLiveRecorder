@@ -12,13 +12,16 @@ from __future__ import annotations
 import argparse
 import os
 import threading
+import time
 
 from webui.app import create_app
 
 SCRIPT_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CONFIG_FILE = os.path.join(SCRIPT_PATH, 'config', 'config.ini')
-URL_CONFIG_FILE = os.path.join(SCRIPT_PATH, 'config', 'URL_config.ini')
-DOWNLOADS_PATH = os.path.join(SCRIPT_PATH, 'downloads')
+# 桌面端数据目录重定向（DLR_DATA_DIR 由 Tauri 壳注入），与 main.py 保持一致
+DATA_DIR = os.environ.get('DLR_DATA_DIR') or SCRIPT_PATH
+CONFIG_FILE = os.path.join(DATA_DIR, 'config', 'config.ini')
+URL_CONFIG_FILE = os.path.join(DATA_DIR, 'config', 'URL_config.ini')
+DOWNLOADS_PATH = os.path.join(DATA_DIR, 'downloads')
 
 
 def build_app(version: str = 'v4.0.7'):
@@ -26,7 +29,11 @@ def build_app(version: str = 'v4.0.7'):
 
 
 def start_in_background(port: int = 8000, host: str = '0.0.0.0', version: str = 'v4.0.7') -> threading.Thread:
-    """在后台线程启动 uvicorn（供 main.py --web 使用）。"""
+    """在后台线程启动 uvicorn（供 main.py --web 使用）。
+
+    port=0 时由系统自动分配空闲端口，就绪后向 stdout 打印一行
+    ``DLR_WEBUI_READY:http://127.0.0.1:<port>``，供桌面端壳解析实际端口。
+    """
     import uvicorn
 
     def run():
@@ -34,7 +41,22 @@ def start_in_background(port: int = 8000, host: str = '0.0.0.0', version: str = 
         app = build_app(version)
         config = uvicorn.Config(app, host=host, port=port, log_level='warning')
         server = uvicorn.Server(config)
-        server.run()
+
+        def _serve():
+            server.run()
+
+        th = threading.Thread(target=_serve, daemon=True)
+        th.start()
+        deadline = time.time() + 10
+        while not server.started and time.time() < deadline:
+            time.sleep(0.05)
+        if server.started:
+            try:
+                actual_port = server.servers[0].sockets[0].getsockname()[1]
+                print(f'DLR_WEBUI_READY:http://127.0.0.1:{actual_port}', flush=True)
+            except Exception:
+                pass
+        th.join()
 
     t = threading.Thread(target=run, name='webui', daemon=True)
     t.start()

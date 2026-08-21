@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "主窗口能力：HTTP 转发、文件对话框、自启动、sidecar 进程管理",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "http:default",
+    "dialog:default",
+    "autostart:default",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [{ "name": "recorder-sidecar", "sidecar": true }]
+    },
+    "shell:allow-kill"
+  ]
+}

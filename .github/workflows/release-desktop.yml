@@ -1,0 +1,73 @@
+name: release-desktop
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            sidecar: recorder-sidecar-x86_64-pc-windows-msvc.exe
+            sidecar_name: recorder-sidecar.exe
+            python: '3.11'
+          - os: ubuntu-22.04
+            sidecar: recorder-sidecar-x86_64-unknown-linux-gnu
+            sidecar_name: recorder-sidecar
+            python: '3.11'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Linux 构建依赖
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential \
+            libssl-dev libayatana-appindicator3-dev librsvg2-dev pkg-config
+
+      - name: 安装 Python 并打包 sidecar
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -r requirements.txt pyinstaller
+      - run: pyinstaller --noconfirm --clean recorder-sidecar.spec
+      - name: 放置 externalBin
+        shell: bash
+        run: |
+          mkdir -p src-tauri/binaries
+          cp dist/recorder-sidecar/${{ matrix.sidecar_name }} src-tauri/binaries/${{ matrix.sidecar }}
+          ls -la src-tauri/binaries/
+
+      - name: 构建前端与 Tauri 应用
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm --prefix ui ci
+      - run: npm --prefix ui run tauri build
+
+      - name: 上传安装包
+        uses: actions/upload-artifact@v4
+        with:
+          name: douyinliverecorder-desktop-${{ matrix.os }}
+          path: |
+            ui/src-tauri/target/release/bundle/**/*.msi
+            ui/src-tauri/target/release/bundle/**/*.exe
+            ui/src-tauri/target/release/bundle/**/*.deb
+            ui/src-tauri/target/release/bundle/**/*.AppImage
+          if-no-files-found: error
+
+      - name: 发布到 GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ui/src-tauri/target/release/bundle/**/*.msi
+            ui/src-tauri/target/release/bundle/**/*.exe
+            ui/src-tauri/target/release/bundle/**/*.deb
+            ui/src-tauri/target/release/bundle/**/*.AppImage

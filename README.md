@@ -192,6 +192,73 @@ your-domain.example {
 | GET/PUT | `/api/config` | 读取/保存 config.ini |
 | GET | `/api/logs` | 运行日志（内置模式实时转发 loguru） |
 | GET | `/api/videos` | 已录制文件列表，`/videos/...` 播放/下载 |
+| GET | `/api/health` | sidecar 就绪探测（桌面端壳使用） |
+| GET | `/api/meta` | 下载目录/配置文件绝对路径（桌面端壳使用） |
+
+</div>
+
+## 🖥️桌面端（Tauri）
+
+桌面端为可选外壳：**Tauri 2 (Rust) + Vue 3** 前端 + Python sidecar（录制引擎 + FastAPI），
+复用与 WebUI 完全相同的 API 面。提供原生托盘、开机自启、单实例、关闭最小化到托盘。
+
+```
+┌─────────────────────────────────────┐
+│ Tauri 壳 (Rust)                     │
+│  ├─ 窗口 + 托盘 + 单实例 + 自启动     │
+│  ├─ sidecar 管理：spawn/端口/退出清理  │
+│  └─ 前端 = Vue 3 SPA（ui/ 构建产物）  │
+├─────────────────────────────────────┤
+│ Python sidecar（PyInstaller 打包）   │
+│  ├─ 录制引擎 main.py（headless）     │
+│  ├─ 内置 FastAPI（webui/）           │
+│  └─ FFmpeg 子进程                    │
+└─────────────────────────────────────┘
+```
+
+**源码运行（开发）**
+
+```bash
+# 前置：Python 3.10+、Node 18+、Rust stable；Linux 另需 webkit2gtk-4.1 等构建依赖
+python -m venv .venv && .venv/bin/pip install -r requirements.txt
+cd ui && npm install
+
+# 桌面开发模式：自动起 vite + 编译 Rust + 以源码方式 spawn sidecar
+npm run tauri dev        # 或仓库根执行 ./ui/node_modules/.bin/tauri dev
+```
+
+**纯浏览器开发模式**（仅前端调试，需手动起后端）
+
+```bash
+python main.py --web                      # 后端固定 8000
+cd ui && VITE_BACKEND_URL=http://127.0.0.1:8000 npm run dev   # 或写 ui/.env
+```
+
+**打包**
+
+```bash
+# 1) Python sidecar（onefile 单文件产物 dist/recorder-sidecar）
+.venv/bin/pyinstaller --noconfirm --clean recorder-sidecar.spec
+
+# 2) 放置 externalBin（文件名含 target triple，如 aarch64-unknown-linux-gnu）
+mkdir -p src-tauri/binaries
+cp dist/recorder-sidecar \
+   src-tauri/binaries/recorder-sidecar-aarch64-unknown-linux-gnu
+
+# 3) 桌面安装包（Linux deb；Windows 由 CI 产出 NSIS/MSI）
+./ui/node_modules/.bin/tauri build
+```
+
+目录说明：
+
+- `ui/` — Vue 3 + Vite + TypeScript 前端（Tauri 与浏览器共用，`api.ts` 自动切换传输层）
+- `src-tauri/` — Rust 壳：`sidecar.rs` 生命周期、托盘、单实例、自启动
+- `desktop_sidecar.py` — sidecar 入口（注入 `--web`/`DLR_NO_INPUT`/`DLR_NO_TUI`/`WEBUI_PORT=0`，
+  就绪后向 stdout 打印 `DLR_WEBUI_READY:http://127.0.0.1:<port>` 供壳解析端口）
+- `recorder-sidecar.spec` — PyInstaller 打包配置
+- `.github/workflows/release-desktop.yml` — Windows/Linux 桌面安装包 CI 发布
+
+桌面端不会替代 WebUI/命令行/TUI：同一后端，三种前端入口并存。
 
 </div>
 

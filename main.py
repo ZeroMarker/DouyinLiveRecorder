@@ -70,13 +70,22 @@ start_display_time = datetime.datetime.now()
 global_proxy = False
 recording_time_list = {}
 script_path = os.path.split(os.path.realpath(sys.argv[0]))[0]
-config_file = f'{script_path}/config/config.ini'
-url_config_file = f'{script_path}/config/URL_config.ini'
-backup_dir = f'{script_path}/backup_config'
+# 桌面端数据目录重定向（DLR_DATA_DIR 由 Tauri 壳注入系统用户数据目录）：
+# config/downloads 必须落在可写位置，deb 安装后资源区只读
+data_dir = os.environ.get('DLR_DATA_DIR') or script_path
+config_dir = f'{data_dir}/config'
+config_file = f'{config_dir}/config.ini'
+url_config_file = f'{config_dir}/URL_config.ini'
+backup_dir = f'{data_dir}/backup_config'
 text_encoding = 'utf-8-sig'
 rstr = r"[\/\\\:\*\？?\"\<\>\|&#.。,， ~！· ]"
-default_path = f'{script_path}/downloads'
+default_path = f'{data_dir}/downloads'
+os.makedirs(config_dir, exist_ok=True)
 os.makedirs(default_path, exist_ok=True)
+# 全新数据目录/首次运行：初始化 URL 任务文件（remove_duplicate_lines 等直接读它）
+if not os.path.isfile(url_config_file):
+    with open(url_config_file, 'w', encoding=text_encoding) as _f:
+        pass
 file_update_lock = threading.Lock()
 os_type = os.name
 clear_command = "cls" if os_type == 'nt' else "clear"
@@ -1537,8 +1546,10 @@ while True:
         logger.error(f"错误信息: {err} 发生错误的行数: {err.__traceback__.tb_lineno}")
 
     if first_run:
-        t = threading.Thread(target=display_info, args=(), daemon=True)
-        t.start()
+        if os.environ.get('DLR_NO_TUI') != '1':
+            # 桌面端/服务模式跳过 TUI 刷屏线程（清屏转义码会污染 stdout）
+            t = threading.Thread(target=display_info, args=(), daemon=True)
+            t.start()
         t2 = threading.Thread(target=adjust_max_request, args=(), daemon=True)
         t2.start()
         first_run = False
