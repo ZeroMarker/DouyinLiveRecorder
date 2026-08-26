@@ -268,10 +268,12 @@ def create_app(config_file: str, url_config_file: str, downloads_path: str,
 
     @app.post('/api/tasks')
     def api_add_task(body: AddTaskBody):
-        ok = TaskStore(
+        status = TaskStore(
             url_config_file, default_quality=_config_default_quality()).add(
                 body.url, body.quality, body.name)
-        if not ok:
+        if status == 'duplicate':
+            raise HTTPException(409, '任务已存在，请勿重复添加')
+        if status != 'ok':
             raise HTTPException(400, 'URL 无效或平台不支持')
         state.add_log(f'WebUI 新增任务: {body.url}', 'INFO')
         return {'ok': True}
@@ -285,10 +287,12 @@ def create_app(config_file: str, url_config_file: str, downloads_path: str,
         url = adapter.build_url(body.id)
         if not url:
             raise HTTPException(400, f'平台[{adapter.name}]不支持 ID 快捷添加，请粘贴完整网址')
-        ok = TaskStore(
+        status = TaskStore(
             url_config_file, default_quality=_config_default_quality()).add(
                 url, body.quality, body.name)
-        if not ok:
+        if status == 'duplicate':
+            raise HTTPException(409, '任务已存在，请勿重复添加')
+        if status != 'ok':
             raise HTTPException(400, 'URL 无效或平台不支持')
         state.add_log(f'WebUI 新增任务[{adapter.name}]: {url}', 'INFO')
         return {'ok': True, 'url': url}
