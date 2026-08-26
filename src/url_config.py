@@ -77,6 +77,14 @@ def parse_entry(line: str, default_quality: str = DEFAULT_QUALITY) -> Optional[T
     else:
         split_line = [line, '']
 
+    if len(split_line) > 3:
+        # 容错：段数超过 画质,URL,名称 时，以含 URL 的段为锚点合并多余段
+        idx = next((i for i, p in enumerate(split_line) if contains_url(p)), None)
+        if idx is not None:
+            head = ','.join(split_line[:idx])
+            tail = ','.join(split_line[idx + 1:])
+            split_line = ([head] if head else []) + [split_line[idx], tail]
+
     if len(split_line) == 1:
         url = split_line[0]
         quality, name = default_quality, ''
@@ -213,10 +221,14 @@ class TaskStore:
         url = url.strip()
         if not url:
             return 'invalid'
-        url = normalize_url(url)
+        # 从输入中提取纯 URL（容忍粘贴整行或带说明文字）
+        tokens = [t.strip('\'"') for t in re.split(r'[\s,，;；]+', url)]
+        candidates = [t for t in tokens if '://' in t or contains_url(t)]
+        if not candidates:
+            return 'invalid'
+        url = normalize_url(candidates[0])
         if registry.match(url) is None:
             return 'invalid'
-        url = clean_entry_url(url)
         if url in {e.url for e in self.load()[0]}:
             return 'duplicate'
         entry = TaskEntry(quality=normalize_quality(quality or self.default_quality),
