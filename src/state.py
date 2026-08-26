@@ -105,6 +105,27 @@ def get_task(url: str) -> Optional[dict]:
         return t.to_dict() if t else None
 
 
+# 已删除任务（url）的停止请求：录制线程轮询命中后中断 ffmpeg 并清理退出
+_stop_requests: set[str] = set()
+
+
+def request_stop(url: str) -> None:
+    """请求停止某 URL 的录制/监测（WebUI 删除任务时调用）。"""
+    with _lock:
+        _stop_requests.add(url)
+
+
+def stop_requested(url: str) -> bool:
+    with _lock:
+        return url in _stop_requests
+
+
+def clear_stop(url: str) -> None:
+    """消费停止请求（录制线程完成收尾后调用），避免影响同 URL 的新任务。"""
+    with _lock:
+        _stop_requests.discard(url)
+
+
 def count_recording() -> int:
     with _lock:
         return sum(1 for t in _tasks.values() if t.status == RECORDING)

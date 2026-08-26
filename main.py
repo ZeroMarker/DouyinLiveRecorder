@@ -417,6 +417,16 @@ def clear_record_info(record_name: str, record_url: str) -> None:
         color_obj.print_colored(f"[{record_name}]已经从录制列表中移除\n", color_obj.YELLOW)
 
 
+def handle_removed_task(record_name: str, record_url: str) -> None:
+    """任务已被删除（WebUI）：停止录制、清理运行列表，之后可重新添加。"""
+    state.update_task(record_url, status=state.STOPPED, recording_since=0, message='已删除')
+    state.clear_stop(record_url)
+    recording.discard(record_name)
+    if record_url in running_list:
+        running_list.remove(record_url)
+    color_obj.print_colored(f"[{record_name}]任务已删除,录制已停止\n", color_obj.YELLOW)
+
+
 def direct_download_stream(source_url: str, save_path: str, record_name: str, live_url: str, platform: str) -> bool:
     try:
         with open(save_path, 'wb') as f:
@@ -440,6 +450,10 @@ def direct_download_stream(source_url: str, save_path: str, record_name: str, li
                     if live_url in url_comments or exit_recording:
                         color_obj.print_colored(f"[{record_name}]录制时已被注释或请求停止,下载中断", color_obj.YELLOW)
                         clear_record_info(record_name, live_url)
+                        return False
+
+                    if state.stop_requested(live_url):
+                        handle_removed_task(record_name, live_url)
                         return False
 
                     if chunk:
@@ -481,8 +495,17 @@ def check_subprocess(record_name: str, record_url: str, ffmpeg_command: list, sa
                 process.send_signal(signal.SIGINT)
             process.wait()
             return True
+        if state.stop_requested(record_url):
+            handle_removed_task(record_name, record_url)
+            if os.name == 'nt':
+                if process.stdin:
+                    process.stdin.write(b'q')
+                    process.stdin.close()
+            else:
+                process.send_signal(signal.SIGINT)
+            process.wait()
+            return True
         time.sleep(1)
-
     return_code = process.returncode
     stop_time = time.strftime('%Y-%m-%d %H:%M:%S')
     if return_code == 0:
@@ -621,6 +644,9 @@ def start_record(url_data: tuple, count_variable: int = -1) -> None:
             # print(f'\r全局代理:{global_proxy}')
             while True:
                 try:
+                    if state.stop_requested(record_url):
+                        handle_removed_task(f'序号{count_variable}', record_url)
+                        return
                     port_info = None
                     adapter = registry.match(record_url)
                     if adapter is None:
@@ -680,6 +706,10 @@ def start_record(url_data: tuple, count_variable: int = -1) -> None:
                         if record_url in url_comments:
                             print(f"[{anchor_name}]已被注释,本条线程将会退出")
                             clear_record_info(record_name, record_url)
+                            return
+
+                        if state.stop_requested(record_url):
+                            handle_removed_task(record_name, record_url)
                             return
 
                         if not url_data[-1] and run_once is False:
