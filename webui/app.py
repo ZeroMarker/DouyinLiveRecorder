@@ -273,11 +273,12 @@ def create_app(config_file: str, url_config_file: str, downloads_path: str,
 
     @app.delete('/api/tasks')
     def api_remove_task(url: str = Query(...)):
-        ok = store.remove(url)
-        if not ok:
+        removed_urls = store.remove(url)
+        if not removed_urls:
             raise HTTPException(404, '未找到该任务')
-        state.request_stop(url)  # 通知录制线程立即中断 ffmpeg
-        state.remove_task(url)
+        for u in removed_urls:
+            state.request_stop(u)  # 通知录制线程立即中断 ffmpeg
+            state.remove_task(u)
         state.add_log(f'WebUI 删除任务: {url}', 'INFO')
         return {'ok': True}
 

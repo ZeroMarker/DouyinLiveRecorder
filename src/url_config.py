@@ -23,10 +23,12 @@ from __future__ import annotations
 
 import os
 import re
+import urllib.parse
 from dataclasses import dataclass
 from typing import Optional
 
 from src.adapters import registry
+from src import state
 
 # 合法画质
 QUALITIES = ("原画", "蓝光", "超清", "高清", "标清", "流畅")
@@ -44,7 +46,14 @@ def normalize_quality(quality: str) -> str:
 
 
 def normalize_url(url: str) -> str:
-    return 'https://' + url if '://' not in url else url
+    """补全协议并统一 scheme/host 小写（路径、query 大小写保持原样）。"""
+    if '://' not in url:
+        url = 'https://' + url
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme.lower() not in ('http', 'https'):
+        return url
+    return urllib.parse.urlunsplit((parts.scheme.lower(), parts.netloc.lower(),
+                                    parts.path, parts.query, parts.fragment))
 
 
 def clean_entry_url(url: str) -> str:
@@ -229,22 +238,32 @@ class TaskStore:
         url = normalize_url(candidates[0])
         if registry.match(url) is None:
             return 'invalid'
-        if url in {e.url for e in self.load()[0]}:
+        url = clean_entry_url(url)
+        if url.casefold() in {e.url.casefold() for e in self.load()[0]}:
             return 'duplicate'
+        state.clear_stop(url)  # 清除残留停止请求，避免删除后重加的同 URL 新任务被误停
         entry = TaskEntry(quality=normalize_quality(quality or self.default_quality),
                           url=url, name=name.strip())
         with open(self.path, 'a', encoding='utf-8-sig') as f:
             f.write(self._format_line(entry))
         return 'ok'
 
-    def remove(self, url: str) -> bool:
-        """删除包含该 URL 的行。"""
+    def remove(self, url: str) -> list[str]:
+        """删除包含该 URL 的行，返回被删条目的实际 URL（用于停止对应录制线程）。"""
         lines = self._read_lines()
-        new_lines = [l for l in lines if url not in l]
+        removed_urls: list[str] = []
+        new_lines: list[str] = []
+        for l in lines:
+            if url in l:
+                entry = parse_entry(l.strip().lstrip('#').strip(), self.default_quality)
+                if entry is not None:
+                    removed_urls.append(entry.url)
+            else:
+                new_lines.append(l)
         if len(new_lines) == len(lines):
-            return False
+            return []
         self._write_lines(new_lines)
-        return True
+        return removed_urls
 
     def set_commented(self, url: str, commented: bool) -> bool:
         """注释（暂停）/取消注释（恢复）某任务。"""

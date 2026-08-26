@@ -152,6 +152,11 @@ check('未知链接已自动注释', '# https://unknown.xyz/room/1' in content)
 ok = store.add('https://www.douyu.com/123', '高清', '测试')
 check('add 合法平台', ok == 'ok')
 check('add 重复拒绝', store.add('https://www.douyu.com/123') == 'duplicate')
+ok = store.add('https://www.huya.com/123', '高清', '虎牙测试')
+check('add 虎牙合法', ok == 'ok')
+check('add 带 query 重复拒绝', store.add('https://www.huya.com/123?foo=bar') == 'duplicate')
+check('add 大小写不同重复拒绝', store.add('https://WWW.HUYA.com/123') == 'duplicate')
+store.remove('https://www.huya.com/123')  # 清理虎牙条目，不影响后续用例
 check('add 暂停任务重复拒绝',
       store.set_commented('https://www.douyu.com/123', True)
       and store.add('https://www.douyu.com/123') == 'duplicate'
@@ -163,7 +168,9 @@ check('parse_entry 多余逗号容错',
 check('add 整行粘贴识别为重复',
       store.add('原画,https://www.douyu.com/123,主播: 测试') == 'duplicate')
 
-check('remove', store.remove('https://www.douyu.com/123'))
+removed = store.remove('https://www.douyu.com/123')
+check('remove 返回被删 URL', removed == ['https://www.douyu.com/123'])
+check('remove 未命中返回空', store.remove('https://www.douyu.com/123') == [])
 check('set_commented', store.set_commented('https://www.tiktok.com/@test/live', True))
 entries2, _ = store.load()
 tt = next(e for e in entries2 if 'tiktok' in e.url)
