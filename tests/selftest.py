@@ -158,6 +158,11 @@ check('add 暂停任务重复拒绝',
       and store.set_commented('https://www.douyu.com/123', False))
 ok = store.add('https://bad.unknown/1')
 check('add 非法平台拒绝', ok == 'invalid')
+check('parse_entry 多余逗号容错',
+      parse_entry('原画,原画,https://live.douyin.com/1,主播: 测试').url == 'https://live.douyin.com/1')
+check('add 整行粘贴识别为重复',
+      store.add('原画,https://www.douyu.com/123,主播: 测试') == 'duplicate')
+
 check('remove', store.remove('https://www.douyu.com/123'))
 check('set_commented', store.set_commented('https://www.tiktok.com/@test/live', True))
 entries2, _ = store.load()
