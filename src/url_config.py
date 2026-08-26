@@ -47,6 +47,20 @@ def normalize_url(url: str) -> str:
     return 'https://' + url if '://' not in url else url
 
 
+def clean_entry_url(url: str) -> str:
+    """按平台规则清理 URL：clean_url 平台去 query；小红书保留 host_id 参数。"""
+    adapter = registry.match(url)
+    if adapter is None:
+        return url
+    if adapter.clean_url:
+        url = url.split('?')[0]
+    if 'xiaohongshu' in url:
+        m = re.search(r'&host_id=(.*?)(?=&|$)', url)
+        if m:
+            url = url.split('?')[0] + f'?host_id={m.group(1)}'
+    return url
+
+
 def parse_entry(line: str, default_quality: str = DEFAULT_QUALITY) -> Optional[TaskEntry]:
     """解析一行内容（不含行首 #）为 TaskEntry；无法解析返回 None。"""
     line = line.strip()
@@ -168,14 +182,7 @@ class TaskStore:
                 continue
 
             # URL 清理
-            cleaned = entry.url
-            if adapter.clean_url:
-                cleaned = cleaned.split('?')[0]
-            if 'xiaohongshu' in cleaned:
-                m = re.search(r'&host_id=(.*?)(?=&|$)', cleaned)
-                if m:
-                    cleaned = cleaned.split('?')[0] + f'?host_id={m.group(1)}'
-
+            cleaned = clean_entry_url(entry.url)
             if cleaned != entry.url:
                 entry.url = cleaned
                 new_lines.append(self._format_line(entry))
@@ -198,19 +205,25 @@ class TaskStore:
             line = '# ' + line
         return line + '\n'
 
-    def add(self, url: str, quality: str = '', name: str = '') -> bool:
-        """新增任务。URL 不合法/平台不支持返回 False。"""
+    def add(self, url: str, quality: str = '', name: str = '') -> str:
+        """新增任务。
+
+        :return: 'ok' 成功；'invalid' URL 不合法/平台不支持；'duplicate' 任务已存在（含暂停中的任务）。
+        """
         url = url.strip()
         if not url:
-            return False
+            return 'invalid'
         url = normalize_url(url)
         if registry.match(url) is None:
-            return False
+            return 'invalid'
+        url = clean_entry_url(url)
+        if url in {e.url for e in self.load()[0]}:
+            return 'duplicate'
         entry = TaskEntry(quality=normalize_quality(quality or self.default_quality),
                           url=url, name=name.strip())
         with open(self.path, 'a', encoding='utf-8-sig') as f:
             f.write(self._format_line(entry))
-        return True
+        return 'ok'
 
     def remove(self, url: str) -> bool:
         """删除包含该 URL 的行。"""

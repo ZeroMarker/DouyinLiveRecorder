@@ -150,9 +150,14 @@ check('未知链接已自动注释', '# https://unknown.xyz/room/1' in content)
 
 # 增删改
 ok = store.add('https://www.douyu.com/123', '高清', '测试')
-check('add 合法平台', ok)
+check('add 合法平台', ok == 'ok')
+check('add 重复拒绝', store.add('https://www.douyu.com/123') == 'duplicate')
+check('add 暂停任务重复拒绝',
+      store.set_commented('https://www.douyu.com/123', True)
+      and store.add('https://www.douyu.com/123') == 'duplicate'
+      and store.set_commented('https://www.douyu.com/123', False))
 ok = store.add('https://bad.unknown/1')
-check('add 非法平台拒绝', not ok)
+check('add 非法平台拒绝', ok == 'invalid')
 check('remove', store.remove('https://www.douyu.com/123'))
 check('set_commented', store.set_commented('https://www.tiktok.com/@test/live', True))
 entries2, _ = store.load()
@@ -189,9 +194,11 @@ r = client.post('/api/tasks', json={'url': 'https://live.douyin.com/999', 'quali
 check('POST /api/tasks', r.status_code == 200)
 r = client.post('/api/tasks', json={'url': 'https://bad.unknown/1'})
 check('POST 非法 URL 400', r.status_code == 400)
-# 选平台 + 输 ID
+# 选平台 + 输 ID（21593109 已在种子文件中，应返回 409）
 r = client.post('/api/tasks/from-id', json={'platform': 'B站直播', 'id': '21593109', 'quality': '高清', 'name': 'ID快捷'})
-check('POST from-id 成功', r.status_code == 200 and 'https://live.bilibili.com/21593109' in r.json().get('url', ''))
+check('POST from-id 重复 409', r.status_code == 409)
+r = client.post('/api/tasks/from-id', json={'platform': 'B站直播', 'id': '21593110', 'quality': '高清', 'name': 'ID快捷'})
+check('POST from-id 成功', r.status_code == 200 and 'https://live.bilibili.com/21593110' in r.json().get('url', ''))
 r = client.post('/api/tasks/from-id', json={'platform': 'TikTok直播', 'id': '@pearlgaga88'})
 check('POST from-id TikTok 去@', r.status_code == 200)
 r = client.post('/api/tasks/from-id', json={'platform': '不存在的平台', 'id': '1'})
