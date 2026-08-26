@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref } from 'vue'
-import { api, initApi } from './api'
+import { listen } from '@tauri-apps/api/event'
+import { api, initApi, isTauri } from './api'
 import type { StatusInfo } from './types'
 import { useToast } from './composables/useToast'
 import TaskPanel from './components/TaskPanel.vue'
@@ -8,7 +9,7 @@ import ConfigPanel from './components/ConfigPanel.vue'
 import LogsPanel from './components/LogsPanel.vue'
 import FilesPanel from './components/FilesPanel.vue'
 
-const { toastState } = useToast()
+const { toastState, toast } = useToast()
 
 const status = ref<StatusInfo | null>(null)
 const connected = ref(false)
@@ -16,6 +17,8 @@ const lastUpdate = ref('')
 const activeTab = ref<'tasks' | 'config' | 'logs' | 'files'>('tasks')
 const filesRef = ref<InstanceType<typeof FilesPanel> | null>(null)
 let timer: number | undefined
+let disposed = false
+let unlistenError: (() => void) | undefined
 
 async function loadStatus() {
   try {
@@ -36,7 +39,8 @@ function startPolling() {
 }
 
 async function ensureBackend() {
-  while (!(await initApi())) await new Promise((r) => setTimeout(r, 2000))
+  while (!disposed && !(await initApi())) await new Promise((r) => setTimeout(r, 2000))
+  if (disposed) return
   startPolling()
 }
 
@@ -45,8 +49,21 @@ function handlePlay(path: string) {
   nextTick(() => filesRef.value?.play(path))
 }
 
-onMounted(ensureBackend)
-onUnmounted(() => clearInterval(timer))
+onMounted(async () => {
+  ensureBackend()
+  // 桌面壳：sidecar 启动失败/退出时由 Rust 发出事件，提示用户而非无限转圈
+  if (isTauri()) {
+    unlistenError = await listen<string>('backend-error', (e) => {
+      connected.value = false
+      toast(e.payload, false)
+    })
+  }
+})
+onUnmounted(() => {
+  disposed = true
+  clearInterval(timer)
+  unlistenError?.()
+})
 </script>
 
 <template>

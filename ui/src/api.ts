@@ -55,16 +55,32 @@ export async function request(path: string, opts: RequestInit = {}): Promise<Res
     clearTimeout(timer)
   }
   if (!r.ok) {
-    let msg = r.statusText
-    try {
-      const detail = (await r.json()) as { detail?: unknown }
-      msg = String(detail.detail ?? detail) || msg
-    } catch {
-      /* 非 JSON 错误响应，用 statusText */
-    }
-    throw new Error(msg || `HTTP ${r.status}`)
+    throw new Error((await extractErrorMessage(r)) || `HTTP ${r.status}`)
   }
   return r
+}
+
+/** FastAPI 错误体：{detail: string} 或校验错误 {detail: [{loc,msg,type},...]}。 */
+async function extractErrorMessage(r: Response): Promise<string> {
+  let body: unknown
+  try {
+    body = await r.json()
+  } catch {
+    return r.statusText // 非 JSON 错误响应
+  }
+  if (!(body && typeof body === 'object' && 'detail' in body)) return r.statusText
+  const detail: unknown = body.detail
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    const msgs = detail.map((item) =>
+      item && typeof item === 'object' && 'msg' in item && typeof item.msg === 'string'
+        ? item.msg
+        : String(item),
+    )
+    return msgs.filter(Boolean).join('; ')
+  }
+  if (detail !== null && detail !== undefined) return String(detail)
+  return r.statusText
 }
 
 export async function api<T = unknown>(path: string, opts?: RequestInit): Promise<T> {
@@ -79,4 +95,9 @@ export async function apiText(path: string, opts?: RequestInit): Promise<string>
 export function playUrl(path: string): string {
   const encoded = path.split('/').map(encodeURIComponent).join('/')
   return `${baseUrl}/api/videos/play/${encoded}`
+}
+
+/** 后端基地址（浏览器 dev 模式下载等直链需要）。 */
+export function backendBase(): string {
+  return baseUrl
 }

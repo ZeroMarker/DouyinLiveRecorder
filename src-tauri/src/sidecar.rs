@@ -44,6 +44,7 @@ fn spawn_dev(app: &AppHandle, repo_root: &std::path::Path) {
         .env("DLR_NO_TUI", "1")
         .env("WEBUI_HOST", "127.0.0.1")
         .env("WEBUI_PORT", "0")
+        .env("DLR_PARENT_PID", std::process::id().to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -51,7 +52,8 @@ fn spawn_dev(app: &AppHandle, repo_root: &std::path::Path) {
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("[sidecar] 启动失败: {e}");
+            let e = format!("录制引擎启动失败: {e}");
+            report_error(app, &e);
             return;
         }
     };
@@ -66,8 +68,12 @@ fn spawn_dev(app: &AppHandle, repo_root: &std::path::Path) {
             while let Ok(Some(line)) = lines.next_line().await {
                 if let Some(rest) = line.strip_prefix("DLR_WEBUI_READY:") {
                     report_ready(&app2, rest.trim());
-                    break;
+                    continue; // 继续排空 stdout，避免 Python 写管道 EPIPE
                 }
+            }
+            // stdout 关闭即 sidecar 已退出；未就绪过则明确告知前端
+            if app2.state::<BackendUrl>().0.lock().is_none() {
+                report_error(&app2, "录制引擎已退出（未能就绪）");
             }
         });
     }
@@ -86,15 +92,16 @@ fn spawn_bundled(app: &AppHandle) {
     let mut cmd = match app.shell().sidecar("recorder-sidecar") {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("[sidecar] 配置缺失: {e}");
+            let e = format!("sidecar 配置缺失: {e}");
+            report_error(app, &e);
             return;
         }
     };
     cmd = cmd
         .env("DLR_NO_INPUT", "1")
-        .env("DLR_NO_TUI", "1")
         .env("WEBUI_HOST", "127.0.0.1")
-        .env("WEBUI_PORT", "0");
+        .env("WEBUI_PORT", "0")
+        .env("DLR_PARENT_PID", std::process::id().to_string());
     if let Ok(data_dir) = app.path().app_data_dir() {
         cmd = cmd.env("DLR_DATA_DIR", data_dir);
     }
@@ -102,7 +109,8 @@ fn spawn_bundled(app: &AppHandle) {
     let (mut rx, child) = match cmd.spawn() {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("[sidecar] 启动失败: {e}");
+            let e = format!("录制引擎启动失败: {e}");
+            report_error(app, &e);
             return;
         }
     };
@@ -116,14 +124,15 @@ fn spawn_bundled(app: &AppHandle) {
                     let line = String::from_utf8_lossy(&line);
                     if let Some(rest) = line.strip_prefix("DLR_WEBUI_READY:") {
                         report_ready(&app2, rest.trim());
-                        break;
+                        continue; // 不再 break，保持事件循环排空输出
                     }
                 }
                 CommandEvent::Stderr(line) => {
                     eprintln!("[sidecar] {}", String::from_utf8_lossy(&line));
                 }
                 CommandEvent::Terminated(payload) => {
-                    eprintln!("[sidecar] 退出: code={:?}", payload.code);
+                    *app2.state::<BackendUrl>().0.lock() = None;
+                    report_error(&app2, &format!("录制引擎已退出(code={:?})", payload.code));
                     break;
                 }
                 _ => {}
@@ -139,4 +148,9 @@ fn report_ready(app: &AppHandle, url: &str) {
     *app.state::<BackendUrl>().0.lock() = Some(url.to_string());
     let _ = app.emit("backend-ready", url.to_string());
     eprintln!("[sidecar] 就绪: {url}");
+}
+
+fn report_error(app: &AppHandle, msg: &str) {
+    eprintln!("[sidecar] 错误: {msg}");
+    let _ = app.emit("backend-error", msg.to_string());
 }

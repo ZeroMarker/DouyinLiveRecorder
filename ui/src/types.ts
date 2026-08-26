@@ -45,8 +45,3 @@ export interface VideoFile {
   mtime: number
 }
 
-export interface MetaInfo {
-  downloads_dir: string
-  config_file: string
-  url_config_file: string
-}

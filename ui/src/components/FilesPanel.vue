@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { save } from '@tauri-apps/plugin-dialog'
-import { api, isTauri, playUrl } from '../api'
+import { api, backendBase, isTauri, playUrl } from '../api'
 import type { VideoFile } from '../types'
 import { useToast } from '../composables/useToast'
 
@@ -35,8 +35,10 @@ async function loadVideos() {
   }
 }
 
-function play(path: string) {
+async function play(path: string) {
   playing.value = true
+  // player 模板 ref 在 v-if 内，DOM 更新是异步的：等 nextTick 后再取
+  await nextTick()
   const el = player.value
   if (!el) return
   el.pause()
@@ -55,7 +57,7 @@ async function download(f: VideoFile) {
       toast('已保存到 ' + dest)
     } else {
       const a = document.createElement('a')
-      a.href = '/videos/' + f.path.split('/').map(encodeURIComponent).join('/')
+      a.href = `${backendBase()}/videos/` + f.path.split('/').map(encodeURIComponent).join('/')
       a.download = f.name
       a.click()
     }

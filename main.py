@@ -92,6 +92,28 @@ clear_command = "cls" if os_type == 'nt' else "clear"
 color_obj = utils.Color()
 os.environ['PATH'] = ffmpeg_path + os.pathsep + current_env_path
 
+def _start_parent_watchdog() -> None:
+    """桌面壳模式（Tauri sidecar）：壳退出后自杀，避免孤儿进程继续占用端口录制。
+
+    Rust 侧无法在 panic=abort / 被信号杀死时执行清理，故由 Python 侧轮询
+    父进程存活状态兜底。os._exit 确保不残留 uvicorn/录制线程。"""
+    parent_pid = int(os.environ.get('DLR_PARENT_PID', '0') or 0)
+    if not parent_pid:
+        return
+
+    def _watch() -> None:
+        while True:
+            time.sleep(5)
+            try:
+                if os.getppid() != parent_pid:
+                    logger.info('检测到桌面壳已退出，sidecar 自动停止')
+                    os._exit(1)
+            except OSError:
+                os._exit(1)
+
+    threading.Thread(target=_watch, daemon=True, name='parent-watchdog').start()
+
+
 # 内置 WebUI：python main.py --web（监听地址和端口可用环境变量覆盖）
 if '--web' in sys.argv:
     try:
@@ -104,6 +126,7 @@ if '--web' in sys.argv:
         print(f'WebUI 已启动: http://{webui_host}:{webui_port}')
     except Exception as e:
         logger.error(f'WebUI 启动失败: {e}')
+_start_parent_watchdog()
 
 
 def signal_handler(_signal, _frame):

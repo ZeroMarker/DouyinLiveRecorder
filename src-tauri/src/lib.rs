@@ -43,7 +43,13 @@ fn backend_url(state: tauri::State<BackendUrl>) -> String {
 async fn save_file(app: tauri::AppHandle, path: String, dest: String) -> Result<(), String> {
     // 从后端拿下载目录绝对路径，校验 path 无目录穿越后复制到用户选择位置
     let base = backend_base(&app).ok_or("后端未就绪")?;
-    let meta: serde_json::Value = reqwest::get(format!("{base}/api/meta"))
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let meta: serde_json::Value = client
+        .get(format!("{base}/api/meta"))
+        .send()
         .await
         .map_err(|e| e.to_string())?
         .json()
