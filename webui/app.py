@@ -276,6 +276,7 @@ def create_app(config_file: str, url_config_file: str, downloads_path: str,
         ok = store.remove(url)
         if not ok:
             raise HTTPException(404, '未找到该任务')
+        state.request_stop(url)  # 通知录制线程立即中断 ffmpeg
         state.remove_task(url)
         state.add_log(f'WebUI 删除任务: {url}', 'INFO')
         return {'ok': True}

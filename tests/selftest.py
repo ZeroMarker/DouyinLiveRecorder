@@ -229,6 +229,13 @@ check('state 任务注册', len(ts) == 1 and ts[0]['status'] == 'recording')
 state.add_log('hello webui')
 check('state 日志', len(state.get_logs()) >= 1)
 
+# 删除任务 → 停止请求
+check('stop_requested 初始为 False', not state.stop_requested('https://live.douyin.com/999'))
+r = client.delete('/api/tasks?url=https%3A%2F%2Flive.douyin.com%2F999')
+check('DELETE 任务', r.status_code == 200)
+check('DELETE 触发停止请求', state.stop_requested('https://live.douyin.com/999'))
+state.clear_stop('https://live.douyin.com/999')
+check('clear_stop 消费请求', not state.stop_requested('https://live.douyin.com/999'))
 print()
 if failures:
     print(f'❌ {len(failures)} 项失败: {failures}')
