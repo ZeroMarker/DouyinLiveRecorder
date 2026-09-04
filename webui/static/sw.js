@@ -10,7 +10,7 @@
  * 注意：Service Worker 仅在 HTTPS 或 localhost 环境下生效。
  * 局域网 HTTP 访问时浏览器会拒绝注册，页面功能不受影响，仅失去离线能力。
  */
-const VERSION = '2026.09.04.1';
+const VERSION = '2026.09.04.2';
 const CACHE_NAME = `dlr-webui-${VERSION}`;
 
 const PRECACHE = [
