@@ -1,228 +1,701 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="auto">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DouyinLiveRecorder WebUI</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>录制管理 · DouyinLiveRecorder</title>
 <!-- PWA -->
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#0f1115">
+<meta name="theme-color" content="#f3f1ea" id="meta-theme">
 <meta name="application-name" content="DouyinLiveRecorder">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="录制管理">
+<meta name="description" content="DouyinLiveRecorder Web 管理面板：任务管理、配置、日志与录制文件查看">
 <style>
-  :root {
-    --bg: #0f1115; --panel: #171a21; --border: #262b36; --text: #d8dee9;
-    --muted: #7a8291; --accent: #4c8dff; --green: #3fb950; --yellow: #d29922;
-    --red: #f85149; --orange: #db6d28;
+/* ============================================================
+ * Material Design 3 Expressive — unified design language
+ * One token system drives every component below. No one-off
+ * colors, radii, shadows or easings outside :root tokens.
+ * ========================================================== */
+:root {
+  color-scheme: light;
+  /* Seed-derived tonal scheme (seed #4c8dff, harmonized) */
+  --md-primary: #415f91;
+  --md-on-primary: #ffffff;
+  --md-primary-container: #d6e3ff;
+  --md-on-primary-container: #001b3d;
+  --md-secondary: #565f71;
+  --md-on-secondary: #ffffff;
+  --md-secondary-container: #dae2f9;
+  --md-on-secondary-container: #131c2b;
+  --md-tertiary: #705575;
+  --md-on-tertiary: #ffffff;
+  --md-tertiary-container: #fad8fd;
+  --md-on-tertiary-container: #28132e;
+  --md-error: #ba1a1a;
+  --md-on-error: #ffffff;
+  --md-error-container: #ffdad6;
+  --md-on-error-container: #410002;
+  --md-success: #146c2e;
+  --md-on-success: #ffffff;
+  --md-success-container: #a6f2b6;
+  --md-on-success-container: #00210b;
+  --md-warning: #7a5900;
+  --md-on-warning: #ffffff;
+  --md-warning-container: #ffdf9e;
+  --md-on-warning-container: #261900;
+  /* Surfaces */
+  --md-surface: #f9f9ff;
+  --md-surface-dim: #dad9e3;
+  --md-surface-container-lowest: #ffffff;
+  --md-surface-container-low: #f3f1ea;
+  --md-surface-container: #efedf4;
+  --md-surface-container-high: #e9e7ef;
+  --md-surface-container-highest: #e3e2e9;
+  --md-on-surface: #191c20;
+  --md-on-surface-variant: #44474e;
+  --md-outline: #74777f;
+  --md-outline-variant: #c4c6d0;
+  --md-inverse-surface: #2e3135;
+  --md-inverse-on-surface: #f0f0f7;
+  --md-scrim: rgba(16, 20, 28, .4);
+  --md-shadow: 16 20 28;
+  /* State layers */
+  --md-hover: rgba(65, 95, 145, .08);
+  --md-press: rgba(65, 95, 145, .12);
+  --md-hover-on-primary: rgba(255, 255, 255, .08);
+  /* Shape (M3 Expressive: rounder, morphable) */
+  --md-shape-xs: 4px;
+  --md-shape-sm: 8px;
+  --md-shape-md: 12px;
+  --md-shape-lg: 16px;
+  --md-shape-xl: 28px;
+  --md-shape-full: 999px;
+  /* Motion (M3 emphasized) */
+  --md-ease-emphasized: cubic-bezier(.05, .7, .1, 1);
+  --md-ease-standard: cubic-bezier(.2, 0, 0, 1);
+  --md-dur-short: 200ms;
+  --md-dur-med: 350ms;
+  --md-dur-long: 500ms;
+  /* Type */
+  --md-font: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --md-mono: "SF Mono", "JetBrains Mono", ui-monospace, Consolas, "Noto Sans Mono", monospace;
+  --md-topbar-h: 64px;
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --md-primary: #aac7ff;
+  --md-on-primary: #0a305f;
+  --md-primary-container: #284677;
+  --md-on-primary-container: #d6e3ff;
+  --md-secondary: #bec6dc;
+  --md-on-secondary: #283041;
+  --md-secondary-container: #3e4759;
+  --md-on-secondary-container: #dae2f9;
+  --md-tertiary: #debcdf;
+  --md-on-tertiary: #3f2845;
+  --md-tertiary-container: #573e5c;
+  --md-on-tertiary-container: #fad8fd;
+  --md-error: #ffb4ab;
+  --md-on-error: #690005;
+  --md-error-container: #93000a;
+  --md-on-error-container: #ffdad6;
+  --md-success: #7bda8f;
+  --md-on-success: #003916;
+  --md-success-container: #00522b;
+  --md-on-success-container: #a6f2b6;
+  --md-warning: #eac35c;
+  --md-on-warning: #3f2e00;
+  --md-warning-container: #574200;
+  --md-on-warning-container: #ffdf9e;
+  --md-surface: #131318;
+  --md-surface-dim: #131318;
+  --md-surface-container-lowest: #0d0e13;
+  --md-surface-container-low: #1a1b21;
+  --md-surface-container: #1e1f25;
+  --md-surface-container-high: #282a31;
+  --md-surface-container-highest: #33353d;
+  --md-on-surface: #e3e2e9;
+  --md-on-surface-variant: #c3c6cf;
+  --md-outline: #8e9099;
+  --md-outline-variant: #44474e;
+  --md-inverse-surface: #e3e2e9;
+  --md-inverse-on-surface: #2e3135;
+  --md-scrim: rgba(0, 0, 0, .55);
+  --md-hover: rgba(170, 199, 255, .08);
+  --md-press: rgba(170, 199, 255, .12);
+  --md-hover-on-primary: rgba(10, 48, 95, .08);
+}
+@media (prefers-color-scheme: dark) {
+  html[data-theme="auto"] {
+    color-scheme: dark;
+    --md-primary: #aac7ff;
+    --md-on-primary: #0a305f;
+    --md-primary-container: #284677;
+    --md-on-primary-container: #d6e3ff;
+    --md-secondary: #bec6dc;
+    --md-on-secondary: #283041;
+    --md-secondary-container: #3e4759;
+    --md-on-secondary-container: #dae2f9;
+    --md-tertiary: #debcdf;
+    --md-on-tertiary: #3f2845;
+    --md-tertiary-container: #573e5c;
+    --md-on-tertiary-container: #fad8fd;
+    --md-error: #ffb4ab;
+    --md-on-error: #690005;
+    --md-error-container: #93000a;
+    --md-on-error-container: #ffdad6;
+    --md-success: #7bda8f;
+    --md-on-success: #003916;
+    --md-success-container: #00522b;
+    --md-on-success-container: #a6f2b6;
+    --md-warning: #eac35c;
+    --md-on-warning: #3f2e00;
+    --md-warning-container: #574200;
+    --md-on-warning-container: #ffdf9e;
+    --md-surface: #131318;
+    --md-surface-dim: #131318;
+    --md-surface-container-lowest: #0d0e13;
+    --md-surface-container-low: #1a1b21;
+    --md-surface-container: #1e1f25;
+    --md-surface-container-high: #282a31;
+    --md-surface-container-highest: #33353d;
+    --md-on-surface: #e3e2e9;
+    --md-on-surface-variant: #c3c6cf;
+    --md-outline: #8e9099;
+    --md-outline-variant: #44474e;
+    --md-inverse-surface: #e3e2e9;
+    --md-inverse-on-surface: #2e3135;
+    --md-scrim: rgba(0, 0, 0, .55);
+    --md-hover: rgba(170, 199, 255, .08);
+    --md-press: rgba(170, 199, 255, .12);
+    --md-hover-on-primary: rgba(10, 48, 95, .08);
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html { color-scheme: dark; }
-  body { min-width: 320px; background: var(--bg); color: var(--text); font: 14px/1.6 "PingFang SC","Microsoft YaHei",sans-serif; overflow-x: hidden; }
-  button, input, select, textarea { font: inherit; }
-  .wrap { width: 100%; max-width: 1200px; margin: 0 auto; padding: 20px; }
-  header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
-  header h1 { font-size: 20px; }
-  header .ver { color: var(--muted); font-size: 12px; }
-  header .spacer { flex: 1; }
-  .connection { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
-  .connection::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--yellow); }
-  .connection.online::before { background: var(--green); box-shadow: 0 0 0 3px rgba(63,185,80,.12); }
-  .connection.offline::before { background: var(--red); }
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
-  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
-  .card .num { font-size: 26px; font-weight: 700; }
-  .card .lbl { color: var(--muted); font-size: 12px; margin-top: 2px; }
-  nav.tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
-  nav.tabs::-webkit-scrollbar { display: none; }
-  nav.tabs button { flex: 0 0 auto; background: none; border: none; color: var(--muted); padding: 10px 18px; cursor: pointer; font-size: 14px; border-bottom: 2px solid transparent; white-space: nowrap; }
-  nav.tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
-  .panel { display: none; }
-  .panel.active { display: block; }
-  table { width: 100%; border-collapse: collapse; }
-  .table-scroll { width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
-  th { color: var(--muted); font-weight: 500; font-size: 12px; }
-  tr:hover td { background: rgba(255,255,255,.03); }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 12px; }
-  .b-recording { background: rgba(63,185,80,.15); color: var(--green); }
-  .b-waiting, .b-offline { background: rgba(210,153,34,.15); color: var(--yellow); }
-  .b-error { background: rgba(248,81,73,.15); color: var(--red); }
-  .b-stopped, .b-unknown { background: rgba(122,130,145,.15); color: var(--muted); }
-  .btn { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 12px; cursor: pointer; font-size: 13px; }
-  .btn:hover { border-color: var(--accent); color: var(--accent); }
-  .btn.danger:hover { border-color: var(--red); color: var(--red); }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .btn.primary:hover { opacity: .9; color: #fff; }
-  .btn.sm { padding: 2px 8px; font-size: 12px; }
-  .btn:disabled { opacity: .5; cursor: wait; pointer-events: none; }
-  .form-row { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
-  .form-row input, .form-row select { background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 8px 10px; font-size: 13px; }
-  .form-row > * { max-width: 100%; }
-  .form-row input[type=url] { flex: 1; min-width: 260px; }
-  .toolbar { display: flex; align-items: center; gap: 8px; margin: -4px 0 12px; flex-wrap: wrap; }
-  .toolbar input, .toolbar select { background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 9px; }
-  .toolbar input[type=search] { width: min(280px, 100%); }
-  .toolbar .summary { margin-left: auto; color: var(--muted); font-size: 12px; }
-  textarea { width: 100%; min-height: 60vh; background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 12px; font-family: "SF Mono",Consolas,monospace; font-size: 12px; resize: vertical; }
-  .logs { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; height: 70vh; overflow-y: auto; font-family: Consolas,monospace; font-size: 12px; }
-  .logs .row { padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,.03); white-space: pre-wrap; word-break: break-all; }
-  .log-ERROR { color: var(--red); } .log-WARNING { color: var(--yellow); } .log-SUCCESS { color: var(--green); }
-  .file-item { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--border); }
-  .file-item .path { flex: 1; word-break: break-all; }
-  .file-item .size { color: var(--muted); font-size: 12px; white-space: nowrap; }
-  .empty { color: var(--muted); text-align: center; padding: 40px 0; }
-  .toast { position: fixed; top: 20px; right: 20px; background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--accent); padding: 10px 16px; border-radius: 8px; z-index: 99; display: none; }
-  .toast.ok { border-left-color: var(--green); } .toast.err { border-left-color: var(--red); }
-  .dirty { color: var(--yellow); }
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  #offline-banner { display: none; position: sticky; top: 0; z-index: 98; background: var(--orange); color: #fff; text-align: center; padding: 6px 12px; font-size: 13px; }
-  .muted { color: var(--muted); }
-  a { color: var(--accent); text-decoration: none; }
-  @media (max-width: 760px) {
-    .wrap { padding: 14px; }
-    header { gap: 6px 12px; margin-bottom: 14px; }
-    header h1 { flex-basis: 100%; font-size: 18px; }
-    header .spacer { display: none; }
-    .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
-    .card { padding: 10px 12px; }
-    .card .num { font-size: 22px; }
-    nav.tabs { margin-inline: -14px; padding-inline: 14px; }
-    nav.tabs button { flex: 1 0 auto; min-height: 44px; padding: 9px 14px; }
-    .form-row { align-items: stretch; }
-    .form-row input, .form-row select, .form-row .btn { min-height: 42px; }
-    #panel-tasks .form-row > * { flex: 1 1 calc(50% - 8px); width: auto !important; min-width: 0 !important; }
-    #panel-tasks .form-row #new-id,
-    #panel-tasks .form-row #new-url,
-    #panel-tasks .form-row .primary { flex-basis: 100%; }
-    .toolbar > * { min-height: 40px; }
-    .toolbar input[type=search] { flex: 1 1 100%; width: 100%; }
-    .toolbar .summary { margin-left: 0; flex: 1; }
-    .table-scroll { overflow: visible; }
-    table, tbody, tr, td { display: block; width: 100%; }
-    thead { display: none; }
-    tbody { display: grid; gap: 10px; }
-    tbody tr { padding: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
-    tbody tr:hover td { background: none; }
-    tbody td { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 10px; padding: 6px 0; border: 0; overflow-wrap: anywhere; }
-    tbody td::before { content: attr(data-label); color: var(--muted); font-size: 12px; }
-    tbody td:last-child { align-items: start; }
-    tbody td:last-child .btn { min-height: 36px; margin: 0 4px 4px 0; padding-inline: 10px; }
-    tbody td.empty { display: block; padding: 28px 8px; }
-    tbody td.empty::before { display: none; }
-    textarea { min-height: 56vh; }
-    .logs { height: 62vh; }
-    .file-item { flex-wrap: wrap; padding: 10px 4px; }
-    .file-item .path { flex: 1 1 calc(100% - 70px); }
-    .file-item .size { order: 3; flex: 1; }
-    .file-item .btn { min-height: 36px; display: inline-flex; align-items: center; }
-    .toast { inset: auto 14px 14px; text-align: center; }
-  }
-  @media (max-width: 420px) {
-    .wrap { padding: 12px; }
-    nav.tabs { margin-inline: -12px; padding-inline: 12px; }
-    #panel-tasks .form-row > * { flex-basis: 100%; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    * { scroll-behavior: auto !important; }
-  }
+}
+/* ---------- base ---------- */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  min-width: 320px;
+  font: 14px/1.6 var(--md-font);
+  color: var(--md-on-surface);
+  background:
+    radial-gradient(900px 320px at 12% -80px, color-mix(in srgb, var(--md-primary-container) 55%, transparent), transparent 70%),
+    radial-gradient(760px 300px at 88% -60px, color-mix(in srgb, var(--md-tertiary-container) 50%, transparent), transparent 70%),
+    var(--md-surface);
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 2px; border-radius: var(--md-shape-xs); }
+::selection { background: var(--md-primary-container); }
+a { color: var(--md-primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.wrap { width: 100%; max-width: 1120px; margin: 0 auto; padding: 16px 20px 96px; }
+/* ---------- offline banner ---------- */
+#offline-banner {
+  display: none; position: sticky; top: 0; z-index: 60;
+  background: var(--md-warning-container); color: var(--md-on-warning-container);
+  text-align: center; padding: 8px 16px; font-size: 13px; font-weight: 500;
+}
+/* ---------- M3 medium top app bar ---------- */
+.appbar {
+  position: sticky; top: 0; z-index: 50;
+  margin: 0 -20px 20px; padding: 10px 20px;
+  background: color-mix(in srgb, var(--md-surface) 78%, transparent);
+  -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--md-outline-variant);
+}
+.appbar-row { display: flex; align-items: center; gap: 12px; max-width: 1120px; margin: 0 auto; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand-mark {
+  width: 44px; height: 44px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  color: var(--md-on-primary);
+  background: linear-gradient(135deg, var(--md-primary), var(--md-tertiary));
+  border-radius: 16px 22px 16px 22px; /* expressive squircle */
+  box-shadow: 0 2px 8px rgb(var(--md-shadow) / .18);
+  transition: border-radius var(--md-dur-med) var(--md-ease-emphasized), transform var(--md-dur-short) var(--md-ease-standard);
+}
+.brand-mark:hover { border-radius: 22px 16px 22px 16px; transform: rotate(-4deg) scale(1.03); }
+.brand-mark svg { width: 24px; height: 24px; }
+.brand-text { min-width: 0; }
+.brand-text h1 { font-size: 17px; line-height: 1.25; font-weight: 700; letter-spacing: .1px; white-space: nowrap; }
+.brand-text .sub { display: flex; align-items: center; gap: 8px; color: var(--md-on-surface-variant); font-size: 12px; white-space: nowrap; overflow: hidden; }
+.brand-text .sub #addr { overflow: hidden; text-overflow: ellipsis; }
+.appbar .spacer { flex: 1; }
+.pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 36px; padding: 0 14px 0 12px;
+  border-radius: var(--md-shape-full);
+  background: var(--md-surface-container-high);
+  color: var(--md-on-surface-variant);
+  font-size: 12.5px; font-weight: 600; white-space: nowrap;
+  border: 1px solid transparent;
+}
+.pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--md-warning); flex: 0 0 auto; }
+.pill.online { background: var(--md-success-container); color: var(--md-on-success-container); }
+.pill.online .dot { background: var(--md-success); box-shadow: 0 0 0 4px color-mix(in srgb, var(--md-success) 18%, transparent); animation: pulse 2.4s infinite; }
+.pill.offline { background: var(--md-error-container); color: var(--md-on-error-container); }
+.pill.offline .dot { background: var(--md-error); }
+.pill.rec { background: var(--md-error-container); color: var(--md-on-error-container); }
+.pill.rec .dot { background: var(--md-error); animation: pulse 1.4s infinite; }
+@keyframes pulse { 50% { opacity: .45; } }
+.icon-btn {
+  width: 40px; height: 40px; flex: 0 0 auto;
+  display: inline-grid; place-items: center;
+  background: transparent; border: none; border-radius: 50%;
+  color: var(--md-on-surface-variant); cursor: pointer;
+  transition: background var(--md-dur-short) var(--md-ease-standard), transform var(--md-dur-short) var(--md-ease-standard);
+}
+.icon-btn:hover { background: var(--md-hover); }
+.icon-btn:active { background: var(--md-press); transform: scale(.92); }
+.icon-btn svg { width: 20px; height: 20px; }
+.clock { color: var(--md-on-surface-variant); font-size: 12px; white-space: nowrap; }
+/* ---------- stat cards (M3 elevated + tonal) ---------- */
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.stat {
+  position: relative; overflow: hidden;
+  background: var(--md-surface-container-low);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-xl);
+  padding: 14px 16px 13px;
+  transition: transform var(--md-dur-med) var(--md-ease-emphasized), box-shadow var(--md-dur-med) var(--md-ease-emphasized);
+}
+.stat:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgb(var(--md-shadow) / .12); }
+.stat-top { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.stat-ic {
+  width: 36px; height: 36px; display: grid; place-items: center; flex: 0 0 auto;
+  border-radius: 12px 16px 12px 16px;
+  background: var(--md-secondary-container); color: var(--md-on-secondary-container);
+}
+.stat:nth-child(1) .stat-ic { background: var(--md-error-container); color: var(--md-on-error-container); }
+.stat:nth-child(2) .stat-ic { background: var(--md-primary-container); color: var(--md-on-primary-container); }
+.stat:nth-child(3) .stat-ic { background: var(--md-tertiary-container); color: var(--md-on-tertiary-container); }
+.stat-ic svg { width: 20px; height: 20px; }
+.stat .num { font-size: 26px; line-height: 1.15; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.3px; }
+.stat .lbl { color: var(--md-on-surface-variant); font-size: 12px; font-weight: 500; }
+.stat .bar { position: absolute; inset: auto 0 0 0; height: 3px; background: var(--md-outline-variant); opacity: 0; }
+.stat.live .bar { opacity: 1; }
+.stat.live .bar i { display: block; height: 100%; width: 40%; border-radius: 3px; background: var(--md-error); animation: slide 1.6s var(--md-ease-emphasized) infinite alternate; }
+@keyframes slide { from { margin-left: 0; } to { margin-left: 60%; } }
+/* ---------- M3 tab bar ---------- */
+.tabbar {
+  display: flex; gap: 4px; padding: 6px; margin-bottom: 16px;
+  background: var(--md-surface-container-low);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-full);
+  overflow-x: auto; scrollbar-width: none;
+}
+.tabbar::-webkit-scrollbar { display: none; }
+nav.tabs { display: contents; }
+nav.tabs button {
+  flex: 1 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  border: none; background: none; cursor: pointer;
+  min-height: 44px; padding: 8px 18px;
+  border-radius: var(--md-shape-full);
+  color: var(--md-on-surface-variant); font-size: 13.5px; font-weight: 600; white-space: nowrap;
+  transition: background var(--md-dur-short) var(--md-ease-standard), color var(--md-dur-short) var(--md-ease-standard);
+}
+nav.tabs button svg { width: 18px; height: 18px; }
+nav.tabs button:hover { background: var(--md-hover); }
+nav.tabs button.active { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
+/* ---------- panels: one surface language ---------- */
+.panel { display: none; }
+.panel.active { display: block; animation: rise var(--md-dur-med) var(--md-ease-emphasized); }
+@keyframes rise { from { opacity: 0; transform: translateY(10px) scale(.995); } }
+.sheet {
+  background: var(--md-surface-container-low);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-xl);
+  padding: 16px;
+  box-shadow: 0 1px 3px rgb(var(--md-shadow) / .06);
+}
+.sheet + .sheet { margin-top: 12px; }
+.sheet-title { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.sheet-title h2 { font-size: 15px; font-weight: 700; }
+.sheet-title .hint { margin-left: auto; color: var(--md-on-surface-variant); font-size: 12px; }
+/* ---------- M3 buttons ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 40px; padding: 0 18px;
+  border-radius: var(--md-shape-full);
+  border: 1px solid var(--md-outline);
+  background: transparent; color: var(--md-primary);
+  font-size: 13.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  transition: background var(--md-dur-short) var(--md-ease-standard), transform var(--md-dur-short) var(--md-ease-standard), box-shadow var(--md-dur-short) var(--md-ease-standard), opacity var(--md-dur-short);
+}
+.btn svg { width: 17px; height: 17px; }
+.btn:hover { background: var(--md-hover); }
+.btn:active { transform: scale(.96); }
+.btn.primary {
+  background: var(--md-primary); border-color: var(--md-primary); color: var(--md-on-primary);
+  box-shadow: 0 2px 8px rgb(var(--md-shadow) / .2);
+}
+.btn.primary:hover { background: var(--md-primary); box-shadow: 0 4px 14px rgb(var(--md-shadow) / .28); filter: brightness(1.06); }
+.btn.tonal { background: var(--md-secondary-container); border-color: transparent; color: var(--md-on-secondary-container); }
+.btn.tonal:hover { filter: brightness(1.04); }
+.btn.danger { color: var(--md-error); border-color: var(--md-outline); }
+.btn.danger:hover { background: var(--md-error-container); border-color: transparent; color: var(--md-on-error-container); }
+.btn.sm { min-height: 32px; padding: 0 13px; font-size: 12.5px; }
+.btn:disabled { opacity: .55; cursor: wait; pointer-events: none; }
+/* ---------- M3 outlined fields + search bar ---------- */
+.field, .form-row input, .form-row select, .toolbar input, .toolbar select {
+  min-height: 44px; padding: 0 14px;
+  background: var(--md-surface-container-lowest);
+  border: 1.5px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-md);
+  font-size: 13.5px;
+  transition: border-color var(--md-dur-short), box-shadow var(--md-dur-short);
+}
+.form-row input:focus, .form-row select:focus, .toolbar input:focus, .toolbar select:focus, textarea:focus {
+  outline: none; border-color: var(--md-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-primary) 22%, transparent);
+}
+.form-row { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+.form-row input[type="url"] { flex: 1; min-width: 240px; }
+.search-wrap { position: relative; flex: 1 1 240px; max-width: 360px; display: flex; }
+.search-wrap svg { position: absolute; left: 13px; top: 50%; translate: 0 -50%; width: 18px; height: 18px; color: var(--md-on-surface-variant); pointer-events: none; }
+.toolbar { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; flex-wrap: wrap; }
+.toolbar input[type="search"] {
+  flex: 1 1 220px; border-radius: var(--md-shape-full); padding-left: 40px;
+  background: var(--md-surface-container-high);
+}
+.toolbar .summary { margin-left: auto; color: var(--md-on-surface-variant); font-size: 12px; font-weight: 500; }
+.count-chip {
+  display: inline-flex; align-items: center; height: 26px; padding: 0 11px;
+  background: var(--md-primary-container); color: var(--md-on-primary-container);
+  border-radius: var(--md-shape-full); font-size: 12px; font-weight: 700;
+}
+/* ---------- task table → M3 list rows ---------- */
+.table-scroll { width: 100%; overflow-x: auto; }
+table { width: 100%; border-collapse: separate; border-spacing: 0 8px; }
+thead th {
+  color: var(--md-on-surface-variant); font-weight: 600; font-size: 12px;
+  text-align: left; padding: 0 12px 2px;
+}
+tbody tr {
+  background: var(--md-surface-container-lowest);
+  box-shadow: 0 1px 2px rgb(var(--md-shadow) / .05);
+  animation: rise var(--md-dur-short) var(--md-ease-standard);
+}
+tbody tr td { padding: 12px; vertical-align: middle; border-top: 1px solid var(--md-outline-variant); border-bottom: 1px solid var(--md-outline-variant); }
+tbody tr td:first-child { border-left: 1px solid var(--md-outline-variant); border-radius: 18px 0 0 18px; }
+tbody tr td:last-child { border-right: 1px solid var(--md-outline-variant); border-radius: 0 18px 18px 0; }
+tbody tr:hover td { background: var(--md-hover); }
+tbody tr td:first-child:hover, tbody tr:hover td { background: var(--md-hover); }
+tr:hover td { background: var(--md-hover); }
+.anchor-cell { display: flex; align-items: center; gap: 10px; min-width: 140px; }
+.avatar {
+  width: 36px; height: 36px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  border-radius: 14px; font-weight: 700; font-size: 14px;
+  background: var(--md-tertiary-container); color: var(--md-on-tertiary-container);
+}
+.anchor-cell .who { min-width: 0; }
+.anchor-cell .who b { display: block; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+.muted { color: var(--md-on-surface-variant); }
+.mono { font-variant-numeric: tabular-nums; }
+/* status → M3 assist chips with tonal containers */
+.chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 30px; padding: 0 12px 0 10px;
+  border-radius: var(--md-shape-sm);
+  font-size: 12.5px; font-weight: 700; white-space: nowrap;
+  border: 1px solid transparent;
+}
+.chip .cdot { width: 8px; height: 8px; border-radius: 3px; background: currentColor; }
+.badge { display: none; } /* legacy hook kept harmless */
+.chip.c-recording { background: var(--md-error-container); color: var(--md-on-error-container); }
+.chip.c-recording .cdot { animation: pulse 1.4s infinite; }
+.chip.c-waiting, .chip.c-offline { background: var(--md-warning-container); color: var(--md-on-warning-container); }
+.chip.c-error { background: var(--md-error-container); color: var(--md-on-error-container); }
+.chip.c-stopped, .chip.c-unknown { background: var(--md-surface-container-high); color: var(--md-on-surface-variant); }
+.row-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.url-cell { color: var(--md-on-surface-variant); font-size: 12.5px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ---------- empty state ---------- */
+.empty { color: var(--md-on-surface-variant); text-align: center; padding: 44px 16px; }
+.empty .art {
+  width: 64px; height: 64px; margin: 0 auto 12px;
+  display: grid; place-items: center;
+  background: var(--md-secondary-container); color: var(--md-on-secondary-container);
+  border-radius: 24px 30px 24px 30px;
+}
+.empty .art svg { width: 30px; height: 30px; }
+.empty b { display: block; color: var(--md-on-surface); font-size: 14.5px; margin-bottom: 4px; }
+/* ---------- config / logs / files ---------- */
+textarea {
+  width: 100%; min-height: 56vh; padding: 14px;
+  background: var(--md-surface-container-lowest);
+  border: 1.5px solid var(--md-outline-variant); color: var(--md-on-surface);
+  border-radius: var(--md-shape-lg); font-family: var(--md-mono); font-size: 12.5px; line-height: 1.7; resize: vertical;
+}
+.hintline { display: flex; align-items: center; gap: 8px; color: var(--md-on-surface-variant); font-size: 12.5px; }
+.hintline.dirty { color: var(--md-warning); font-weight: 700; }
+.logs {
+  background: var(--md-surface-container-lowest);
+  border: 1px solid var(--md-outline-variant); border-radius: var(--md-shape-lg);
+  padding: 8px; height: 62vh; overflow-y: auto;
+  font-family: var(--md-mono); font-size: 12.5px; line-height: 1.75;
+}
+.logs .row { display: flex; align-items: baseline; gap: 10px; padding: 4px 10px; border-radius: 8px; }
+.logs .row:hover { background: var(--md-hover); }
+.logs .row + .row { border-top: 1px solid color-mix(in srgb, var(--md-outline-variant) 45%, transparent); }
+.lvl { flex: 0 0 auto; font-weight: 700; font-size: 10.5px; letter-spacing: .4px; padding: 2px 8px; border-radius: 99px; translate: 0 -1px; }
+.log-ERROR .lvl { background: var(--md-error-container); color: var(--md-on-error-container); }
+.log-WARNING .lvl { background: var(--md-warning-container); color: var(--md-on-warning-container); }
+.log-SUCCESS .lvl { background: var(--md-success-container); color: var(--md-on-success-container); }
+.log-INFO .lvl { background: var(--md-surface-container-high); color: var(--md-on-surface-variant); }
+.ts { flex: 0 0 auto; color: var(--md-on-surface-variant); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.msg { flex: 1; min-width: 0; color: var(--md-on-surface); white-space: pre-wrap; word-break: break-all; }
+.log-ERROR .msg { color: var(--md-error); } .log-WARNING .msg { color: var(--md-warning); } .log-SUCCESS .msg { color: var(--md-success); }
+/* M3 switch */
+.switch-wrap { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; font-weight: 500; user-select: none; }
+.switch { position: relative; display: inline-block; width: 52px; height: 32px; flex: 0 0 auto; }
+.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.switch .track { position: absolute; inset: 0; border-radius: var(--md-shape-full); background: var(--md-surface-container-highest); border: 2px solid var(--md-outline); transition: background var(--md-dur-short) var(--md-ease-standard), border-color var(--md-dur-short) var(--md-ease-standard); }
+.switch .thumb { position: absolute; top: 50%; left: 7px; translate: 0 -50%; width: 16px; height: 16px; border-radius: 50%; background: var(--md-outline); display: grid; place-items: center; color: transparent; transition: left var(--md-dur-med) var(--md-ease-emphasized), width var(--md-dur-med) var(--md-ease-emphasized), height var(--md-dur-med) var(--md-ease-emphasized), background var(--md-dur-short), color var(--md-dur-short); }
+.switch input:checked + .track { background: var(--md-primary); border-color: var(--md-primary); }
+.switch input:checked + .track .thumb { left: 22px; width: 24px; height: 24px; background: var(--md-on-primary); color: var(--md-on-primary-container); }
+.switch:hover input:not(:disabled) + .track { filter: brightness(1.06); }
+.switch input:focus-visible + .track { outline: 2px solid var(--md-primary); outline-offset: 2px; }
+.switch input:active + .track .thumb { scale: 1.1; }
+.group-h { display: flex; align-items: center; gap: 10px; margin: 14px 2px 6px; font-weight: 700; font-size: 13px; color: var(--md-primary); }
+.group-h svg { width: 17px; height: 17px; }
+.file-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; margin-bottom: 6px;
+  background: var(--md-surface-container-lowest);
+  border: 1px solid var(--md-outline-variant); border-radius: var(--md-shape-lg);
+  transition: background var(--md-dur-short), transform var(--md-dur-short) var(--md-ease-standard);
+}
+.file-item:hover { background: var(--md-hover); transform: translateX(2px); }
+.file-ic { width: 36px; height: 36px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 12px; background: var(--md-primary-container); color: var(--md-on-primary-container); }
+.file-ic svg { width: 19px; height: 19px; }
+.file-item .path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: 13px; }
+.file-item .size { color: var(--md-on-surface-variant); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+#video-player {
+  background: #000; border-radius: var(--md-shape-xl); overflow: hidden;
+  border: 1px solid var(--md-outline-variant);
+  box-shadow: 0 12px 32px rgb(var(--md-shadow) / .3);
+}
+#player { width: 100%; max-height: 480px; background: #000; display: block; aspect-ratio: 16/9; }
+/* ---------- snackbar (M3) ---------- */
+.toast {
+  position: fixed; left: 50%; bottom: 28px; translate: -50% 0; z-index: 99;
+  display: none; align-items: center; gap: 10px;
+  max-width: min(560px, calc(100vw - 32px));
+  background: var(--md-inverse-surface); color: var(--md-inverse-on-surface);
+  padding: 13px 18px; border-radius: var(--md-shape-md);
+  box-shadow: 0 8px 24px rgb(var(--md-shadow) / .35);
+  font-size: 13.5px; font-weight: 500;
+}
+.toast.show { display: flex; animation: snack var(--md-dur-med) var(--md-ease-emphasized); }
+@keyframes snack { from { opacity: 0; translate: -50% 12px; } }
+.toast .tdot { width: 9px; height: 9px; border-radius: 50%; background: var(--md-primary); flex: 0 0 auto; }
+.toast.ok .tdot { background: var(--md-success); }
+.toast.err .tdot { background: var(--md-error); }
+/* ---------- dialog (M3 basic) ---------- */
+.dlg-backdrop { position: fixed; inset: 0; z-index: 100; background: var(--md-scrim); display: none; align-items: center; justify-content: center; padding: 20px; }
+.dlg-backdrop.show { display: flex; }
+.dlg {
+  width: min(440px, 100%); background: var(--md-surface-container-high);
+  border-radius: var(--md-shape-xl); padding: 24px;
+  box-shadow: 0 16px 48px rgb(var(--md-shadow) / .35);
+  animation: rise var(--md-dur-med) var(--md-ease-emphasized);
+}
+.dlg h3 { font-size: 17px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
+.dlg h3 .warn-ic { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 12px; background: var(--md-error-container); color: var(--md-on-error-container); }
+.dlg p { color: var(--md-on-surface-variant); font-size: 13.5px; margin-bottom: 20px; word-break: break-all; }
+.dlg .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; }
+/* scrollbars */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--md-outline-variant); border-radius: 99px; border: 2px solid var(--md-surface); }
+/* ---------- responsive ---------- */
+@media (max-width: 860px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .clock { display: none; }
+  .brand-text .sub #addr { display: none; }
+}
+@media (max-width: 760px) {
+  .wrap { padding: 12px 12px 96px; }
+  .appbar { margin: 0 -12px 14px; padding: 8px 12px; }
+  .sheet { padding: 12px; border-radius: 20px; }
+  .form-row input, .form-row select, .form-row .btn { min-height: 46px; }
+  #panel-tasks .form-row > * { flex: 1 1 calc(50% - 10px); min-width: 0 !important; width: auto !important; }
+  #panel-tasks .form-row #new-id, #panel-tasks .form-row #new-url, #panel-tasks .form-row .primary { flex-basis: 100%; }
+  .table-scroll { overflow: visible; }
+  table, tbody, tr, td { display: block; width: 100%; }
+  thead { display: none; }
+  tbody { display: grid; gap: 10px; }
+  tbody tr { border-radius: 20px; }
+  tbody tr td { border: 0 !important; padding: 7px 14px; border-radius: 0 !important; }
+  tbody tr td:first-child { padding-top: 14px; }
+  tbody tr td:last-child { padding-bottom: 12px; }
+  tbody td::before { content: attr(data-label); display: block; color: var(--md-on-surface-variant); font-size: 11px; font-weight: 600; margin-bottom: 2px; }
+  .row-actions { justify-content: flex-start; }
+  .row-actions .btn { min-height: 38px; }
+  .url-cell { max-width: none; white-space: normal; word-break: break-all; }
+  .toast { bottom: 16px; }
+  nav.tabs button { min-height: 48px; }
+}
+@media (max-width: 420px) {
+  #panel-tasks .form-row > * { flex-basis: 100%; }
+  .stats { gap: 8px; }
+  .stat { padding: 11px 12px 10px; }
+  .stat .num { font-size: 21px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
 </style>
 </head>
 <body>
-<div id="offline-banner">⚠ 当前离线，显示的是最近一次缓存的数据</div>
-<div class="wrap">
-  <header>
-    <h1>📹 DouyinLiveRecorder</h1>
-    <span class="ver" id="ver"></span>
-    <span class="ver" id="addr"></span>
+<div id="offline-banner">当前离线，显示的是最近一次缓存的数据</div>
+
+<header class="appbar">
+  <div class="appbar-row">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="14" height="12" rx="3"/><path d="m16 10 6-3v10l-6-3" fill="currentColor" stroke="none"/></svg>
+      </span>
+      <div class="brand-text">
+        <h1>录制管理</h1>
+        <div class="sub"><span id="ver"></span><span id="addr"></span></div>
+      </div>
+    </div>
     <span class="spacer"></span>
-    <span class="connection" id="connection">正在连接</span>
-    <span class="ver" id="last-update"></span>
-  </header>
-
-  <div class="cards">
-    <div class="card"><div class="num" id="c-recording">-</div><div class="lbl">录制中</div></div>
-    <div class="card"><div class="num" id="c-tasks">-</div><div class="lbl">任务数</div></div>
-    <div class="card"><div class="num" id="c-disk">-</div><div class="lbl">磁盘剩余 (GB)</div></div>
-    <div class="card"><div class="num" id="c-platforms">-</div><div class="lbl">支持平台</div></div>
+    <span class="pill" id="connection"><span class="dot"></span><span id="connection-text">正在连接</span></span>
+    <span class="clock" id="last-update"></span>
+    <button class="icon-btn" id="theme-toggle" type="button" aria-label="切换深色 / 浅色主题" title="切换主题">
+      <svg id="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+      <svg id="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
   </div>
+</header>
 
-  <nav class="tabs" role="tablist" aria-label="管理功能">
-    <button data-tab="tasks" class="active" role="tab" aria-selected="true">任务管理</button>
-    <button data-tab="config" role="tab" aria-selected="false">配置</button>
-    <button data-tab="logs" role="tab" aria-selected="false">日志</button>
-    <button data-tab="files" role="tab" aria-selected="false">录制文件</button>
-  </nav>
+<div class="wrap">
+
+  <section class="stats" aria-label="运行概览">
+    <div class="stat" id="stat-recording">
+      <div class="stat-top"><span class="stat-ic"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg></span></div>
+      <div class="num" id="c-recording">-</div><div class="lbl">录制中</div>
+      <div class="bar"><i></i></div>
+    </div>
+    <div class="stat">
+      <div class="stat-top"><span class="stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M8 10h8M8 14h5"/></svg></span></div>
+      <div class="num" id="c-tasks">-</div><div class="lbl">任务数</div>
+    </div>
+    <div class="stat">
+      <div class="stat-top"><span class="stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg></span></div>
+      <div class="num"><span id="c-disk">-</span><span style="font-size:13px;font-weight:600;color:var(--md-on-surface-variant)"> GB</span></div><div class="lbl">磁盘剩余</div>
+    </div>
+    <div class="stat">
+      <div class="stat-top"><span class="stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg></span></div>
+      <div class="num" id="c-platforms">-</div><div class="lbl">支持平台</div>
+    </div>
+  </section>
+
+  <div class="tabbar">
+    <nav class="tabs" role="tablist" aria-label="管理功能">
+      <button data-tab="tasks" class="active" role="tab" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m10 9 5 3-5 3z" fill="currentColor" stroke="none"/></svg>任务管理</button>
+      <button data-tab="config" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.9.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5h0a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.9v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1Z"/></svg>配置</button>
+      <button data-tab="logs" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/></svg>日志</button>
+      <button data-tab="files" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.2 3.9A2 2 0 0 0 7.5 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>录制文件</button>
+    </nav>
+  </div>
 
   <!-- 任务管理 -->
   <div class="panel active" id="panel-tasks">
-    <form class="form-row" id="task-form">
-      <select id="new-mode" aria-label="添加方式">
-        <option value="platform">🎯 选平台 + 输入ID</option>
-        <option value="url">🔗 粘贴完整网址</option>
-      </select>
-      <select id="new-platform" style="min-width:150px;" aria-label="直播平台">
-        <option value="">-- 选择平台 --</option>
-      </select>
-      <input type="text" id="new-id" placeholder="直播间ID / 用户名" style="width:240px;" aria-label="直播间 ID 或用户名">
-      <input type="url" id="new-url" placeholder="直播间 URL，如 https://live.douyin.com/123456" style="display:none; flex:1; min-width:260px;" aria-label="直播间 URL">
-      <select id="new-quality" aria-label="录制画质">
-        <option value="">默认画质</option><option>原画</option><option>蓝光</option><option>超清</option><option>高清</option><option>标清</option><option>流畅</option>
-      </select>
-      <input type="text" id="new-name" placeholder="备注（可选）" style="width:120px;" aria-label="任务备注">
-      <button class="btn primary" id="add-task" type="submit">添加任务</button>
-    </form>
-    <div class="toolbar">
-      <input type="search" id="task-search" placeholder="搜索主播、平台或 URL" aria-label="搜索任务">
-      <select id="task-filter" aria-label="筛选任务状态">
-        <option value="all">全部状态</option>
-        <option value="recording">录制中</option>
-        <option value="waiting">等待/未开播</option>
-        <option value="stopped">已暂停</option>
-        <option value="error">出错</option>
-      </select>
-      <button class="btn" id="refresh-tasks" type="button">刷新</button>
-      <span class="summary" id="task-summary"></span>
-    </div>
-    <div class="table-scroll">
-      <table>
-        <thead><tr><th>状态</th><th>主播</th><th>平台</th><th>画质</th><th>已录制</th><th>URL</th><th>操作</th></tr></thead>
-        <tbody id="task-tbody"></tbody>
-      </table>
-    </div>
+    <section class="sheet" aria-label="添加任务">
+      <div class="sheet-title"><h2>添加任务</h2><span class="hint" id="platform-hint"></span></div>
+      <form class="form-row" id="task-form" style="margin-bottom:0">
+        <select id="new-mode" aria-label="添加方式">
+          <option value="platform">选平台 + 输入 ID</option>
+          <option value="url">粘贴完整网址</option>
+        </select>
+        <select id="new-platform" style="min-width:150px;" aria-label="直播平台">
+          <option value="">-- 选择平台 --</option>
+        </select>
+        <input type="text" id="new-id" placeholder="直播间 ID / 用户名" style="width:240px;flex:1;min-width:200px;" aria-label="直播间 ID 或用户名">
+        <input type="url" id="new-url" placeholder="直播间 URL，如 https://live.douyin.com/123456" style="display:none; flex:1; min-width:260px;" aria-label="直播间 URL">
+        <select id="new-quality" aria-label="录制画质">
+          <option value="">默认画质</option><option>原画</option><option>蓝光</option><option>超清</option><option>高清</option><option>标清</option><option>流畅</option>
+        </select>
+        <input type="text" id="new-name" placeholder="备注（可选）" style="width:130px;" aria-label="任务备注">
+        <button class="btn primary" id="add-task" type="submit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>添加任务</button>
+      </form>
+    </section>
+    <section class="sheet" aria-label="任务列表">
+      <div class="toolbar">
+        <span class="search-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="search" id="task-search" placeholder="搜索主播、平台或 URL" aria-label="搜索任务"></span>
+        <select id="task-filter" aria-label="筛选任务状态">
+          <option value="all">全部状态</option>
+          <option value="recording">录制中</option>
+          <option value="waiting">等待/未开播</option>
+          <option value="stopped">已暂停</option>
+          <option value="error">出错</option>
+        </select>
+        <button class="btn tonal" id="refresh-tasks" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>刷新</button>
+        <span class="summary" id="task-summary"></span>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>状态</th><th>主播</th><th>平台</th><th>画质</th><th>已录制</th><th>URL</th><th style="text-align:right">操作</th></tr></thead>
+          <tbody id="task-tbody"></tbody>
+        </table>
+      </div>
+    </section>
   </div>
 
   <!-- 配置 -->
   <div class="panel" id="panel-config">
-    <div class="form-row">
-      <button class="btn primary" id="save-config" type="button">保存配置</button>
-      <button class="btn" id="reload-config" type="button">重新载入</button>
-      <span class="muted" id="config-hint">保存后无需重启：录制进程每轮值守自动重读配置</span>
-    </div>
-    <textarea id="config-text" spellcheck="false"></textarea>
+    <section class="sheet">
+      <div class="sheet-title"><h2>录制配置</h2><span class="hintline" id="config-hint">保存后无需重启：录制进程每轮值守自动重读配置</span></div>
+      <div class="form-row">
+        <button class="btn primary" id="save-config" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>保存配置</button>
+        <button class="btn" id="reload-config" type="button">重新载入</button>
+      </div>
+      <textarea id="config-text" spellcheck="false" aria-label="配置文本"></textarea>
+    </section>
   </div>
 
   <!-- 日志 -->
   <div class="panel" id="panel-logs">
-    <div class="form-row"><button class="btn" id="refresh-logs" type="button">刷新</button><label class="muted"><input type="checkbox" id="log-autoscroll" checked> 自动滚动</label><span class="muted" id="log-hint"></span></div>
-    <div class="logs" id="log-box"></div>
+    <section class="sheet">
+      <div class="form-row"><button class="btn tonal" id="refresh-logs" type="button">刷新</button><label class="switch-wrap"><span class="switch"><input type="checkbox" id="log-autoscroll" checked><span class="track"><span class="thumb"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4L19 7"/></svg></span></span></span>自动滚动</label><span class="muted mono" id="log-hint"></span></div>
+      <div class="logs" id="log-box" role="log" aria-live="off"></div>
+    </section>
   </div>
 
   <!-- 录制文件 -->
   <div class="panel" id="panel-files">
-    <div class="form-row"><button class="btn" id="refresh-videos" type="button">刷新</button><span class="muted">点击文件名播放 / 右键另存下载</span></div>
-    <div id="video-player" style="display:none; margin-bottom: 12px;">
-      <video id="player" controls style="width:100%; max-height:480px; background:#000; border-radius:8px;"></video>
-    </div>
-    <div id="file-list"></div>
+    <section class="sheet">
+      <div class="form-row"><button class="btn tonal" id="refresh-videos" type="button">刷新</button><span class="muted">点击文件名播放 / 右键另存下载</span></div>
+      <div id="video-player" style="display:none; margin-bottom: 12px;">
+        <video id="player" controls preload="metadata"></video>
+      </div>
+      <div id="file-list"></div>
+    </section>
   </div>
 </div>
 
-<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"><span class="tdot"></span><span id="toast-text"></span></div>
+
+<div class="dlg-backdrop" id="dlg-backdrop">
+  <div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="dlg-title" aria-describedby="dlg-desc">
+    <h3><span class="warn-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></span><span id="dlg-title">确认删除？</span></h3>
+    <p id="dlg-desc"></p>
+    <div class="dlg-actions">
+      <button class="btn" id="dlg-cancel" type="button">取消</button>
+      <button class="btn primary" id="dlg-ok" type="button" style="background:var(--md-error);border-color:var(--md-error);color:var(--md-on-error)">删除</button>
+    </div>
+  </div>
+</div>
 
 <script>
 const $ = s => document.querySelector(s);
@@ -235,11 +708,50 @@ let configOriginal = '';
 let configDirty = false;
 const inFlight = new Set();
 
+// ---------- 主题 (M3 light/dark,跟随系统,可手动覆盖) ----------
+function applyTheme(mode) {
+  const root = document.documentElement;
+  root.dataset.theme = mode;
+  try { localStorage.setItem('dlr-theme', mode); } catch (e) {}
+  const dark = mode === 'dark' || (mode === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+  $('#theme-icon-moon').style.display = dark ? 'none' : '';
+  $('#theme-icon-sun').style.display = dark ? '' : 'none';
+  const meta = $('#meta-theme');
+  if (meta) meta.content = dark ? '#131318' : '#f3f1ea';
+}
+function initTheme() {
+  let saved = 'auto';
+  try { saved = localStorage.getItem('dlr-theme') || 'auto'; } catch (e) {}
+  if (!['auto', 'light', 'dark'].includes(saved)) saved = 'auto';
+  applyTheme(saved);
+  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => applyTheme(document.documentElement.dataset.theme || 'auto'));
+  $('#theme-toggle').onclick = () => {
+    const cur = document.documentElement.dataset.theme || 'auto';
+    const dark = cur === 'dark' || (cur === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+    applyTheme(dark ? 'light' : 'dark');
+  };
+}
+
+// ---------- 确认框 (M3 basic dialog,替代原生 confirm) ----------
+let dlgResolve = null;
+function confirmDlg(title, desc) {
+  $('#dlg-title').textContent = title;
+  $('#dlg-desc').textContent = desc;
+  $('#dlg-backdrop').classList.add('show');
+  $('#dlg-cancel').focus();
+  return new Promise(res => { dlgResolve = res; });
+}
+function closeDlg(val) {
+  $('#dlg-backdrop').classList.remove('show');
+  if (dlgResolve) { dlgResolve(val); dlgResolve = null; }
+}
+
 // ---------- 工具 ----------
 function toast(msg, ok = true) {
   const t = $('#toast');
-  t.textContent = msg; t.className = 'toast ' + (ok ? 'ok' : 'err'); t.style.display = 'block';
-  clearTimeout(t._timer); t._timer = setTimeout(() => t.style.display = 'none', 3200);
+  $('#toast-text').textContent = msg;
+  t.className = 'toast ' + (ok ? 'ok' : 'err') + ' show';
+  clearTimeout(t._timer); t._timer = setTimeout(() => t.classList.remove('show'), 3200);
 }
 async function request(path, opts = {}) {
   const controller = new AbortController();
@@ -268,15 +780,20 @@ async function once(key, worker) {
   try { return await worker(); } finally { inFlight.delete(key); }
 }
 async function withBusy(button, worker) {
-  const old = button.textContent;
+  const old = button.innerHTML;
   button.disabled = true;
-  button.textContent = '处理中…';
-  try { return await worker(); } finally { button.disabled = false; button.textContent = old; }
+  button.dataset.busy = '1';
+  button.style.opacity = '.7';
+  try { return await worker(); } finally { button.disabled = false; button.innerHTML = old; button.style.opacity = ''; delete button.dataset.busy; }
 }
 function setConnection(online) {
   const el = $('#connection');
-  el.textContent = online ? '服务正常' : '连接失败';
-  el.className = 'connection ' + (online ? 'online' : 'offline');
+  $('#connection-text').textContent = online ? '服务正常' : '连接失败';
+  const rec = tasks.some(t => !t.commented && t.status === 'recording');
+  el.className = 'pill ' + (!online ? 'offline' : (rec ? 'rec' : 'online'));
+  $('#connection-text').textContent = !online ? '连接失败' : (rec ? '录制中' : '服务正常');
+  const stat = $('#stat-recording');
+  if (stat) stat.classList.toggle('live', rec);
 }
 function markUpdated() {
   $('#last-update').textContent = '更新于 ' + new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
@@ -297,6 +814,7 @@ const STATUS_CLASS = new Set(Object.keys(STATUS_LABEL));
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function shortUrl(u) { return u.length > 48 ? u.slice(0, 48) + '…' : u; }
 function encodePath(base, path) { return appUrl(base + path.split('/').map(encodeURIComponent).join('/')); }
+function initialOf(t) { const s = (t.anchor || t.name || t.platform || t.url || '?').trim(); return (s[0] || '?').toUpperCase(); }
 
 // ---------- 状态 ----------
 async function loadStatus() {
@@ -304,7 +822,7 @@ async function loadStatus() {
     try {
       const s = await api('/api/status');
       const version = String(s.version || '');
-      $('#ver').textContent = version.startsWith('v') ? version : 'v' + version;
+      $('#ver').textContent = version ? (version.startsWith('v') ? version : 'v' + version) : '';
       $('#addr').textContent = location.origin + APP_BASE.pathname.replace(/\/$/, '');
       $('#c-recording').textContent = s.recording_count;
       $('#c-tasks').textContent = s.task_count;
@@ -322,6 +840,7 @@ async function loadTasks() {
       const d = await api('/api/tasks');
       tasks = d.tasks || [];
       renderTasks();
+      setConnection(true);
     } catch (e) { toast('加载任务失败: ' + e.message, false); }
   });
 }
@@ -337,30 +856,34 @@ function renderTasks() {
   });
   const tb = $('#task-tbody');
   tb.innerHTML = '';
-  $('#task-summary').textContent = `显示 ${filtered.length} / ${tasks.length} 个任务`;
+  $('#task-summary').innerHTML = `显示 <span class="count-chip">${filtered.length}</span> / ${tasks.length} 个任务`;
   if (!filtered.length) {
-    const message = tasks.length ? '没有符合筛选条件的任务' : '暂无任务，请在上方添加直播间 URL';
-    tb.innerHTML = `<tr><td colspan="7" class="empty">${message}</td></tr>`;
+    const message = tasks.length ? '没有符合筛选条件的任务' : '暂无任务，请在上方添加直播间';
+    const sub = tasks.length ? '换个关键词或状态试试' : '支持选平台输 ID，或直接粘贴完整网址';
+    tb.innerHTML = `<tr><td colspan="7" style="border:0;background:none;box-shadow:none;padding:0"><div class="empty"><div class="art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="14" height="12" rx="3"/><path d="m16 10 6-3v10l-6-3"/></svg></div><b>${message}</b><div class="muted">${sub}</div></div></td></tr>`;
     return;
   }
   for (const t of filtered) {
       const tr = document.createElement('tr');
       const rawStatus = t.commented ? 'stopped' : (t.status || 'unknown');
       const st = STATUS_CLASS.has(rawStatus) ? rawStatus : 'unknown';
-      const badge = `<span class="badge b-${st}">${t.commented ? '已暂停' : (STATUS_LABEL[rawStatus] || '未知')}</span>`;
-      const playBtn = t.file ? '<button class="btn sm" data-action="play" type="button">播放</button>' : '';
+      const label = t.commented ? '已暂停' : (STATUS_LABEL[rawStatus] || '未知');
+      const chip = `<span class="chip c-${st}"><span class="cdot"></span>${label}</span>`;
+      const playBtn = t.file ? '<button class="btn sm tonal" data-action="play" type="button">播放</button>' : '';
+      const dur = t.recording_seconds ? fmtDur(t.recording_seconds) : '-';
+      const who = esc(t.anchor || t.name || '-');
       tr.innerHTML = `
-        <td data-label="状态">${badge}</td>
-        <td data-label="主播">${esc(t.anchor || t.name || '-')}${t.recording_seconds ? `<div class="muted">${fmtDur(t.recording_seconds)}</div>` : ''}</td>
+        <td data-label="状态">${chip}</td>
+        <td data-label="主播"><div class="anchor-cell"><span class="avatar">${esc(initialOf(t))}</span><span class="who"><b>${who}</b>${t.recording_seconds ? `<span class="muted mono" style="font-size:12px">● ${fmtDur(t.recording_seconds)}</span>` : ''}${t.message && st === 'error' ? `<span class="muted" style="font-size:12px;display:block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.message)}">${esc(t.message)}</span>` : ''}</span></div></td>
         <td data-label="平台">${esc(t.platform || '-')}</td>
-        <td data-label="画质">${esc(t.quality)}</td>
-        <td data-label="已录制" class="muted">${t.recording_seconds ? fmtDur(t.recording_seconds) : '-'}</td>
-        <td data-label="URL"><span class="muted" title="${esc(t.url)}">${esc(shortUrl(t.url))}</span></td>
-        <td data-label="操作">
+        <td data-label="画质">${esc(t.quality || '-')}</td>
+        <td data-label="已录制" class="muted mono">${dur}</td>
+        <td data-label="URL"><div class="url-cell" title="${esc(t.url)}">${esc(shortUrl(t.url))}</div></td>
+        <td data-label="操作"><div class="row-actions">
           <button class="btn sm" data-action="toggle" data-commented="${!t.commented}" type="button">${t.commented ? '恢复' : '暂停'}</button>
           <button class="btn sm danger" data-action="remove" type="button">删除</button>
           ${playBtn}
-        </td>`;
+        </div></td>`;
       tr.querySelectorAll('[data-action]').forEach(button => {
         button.dataset.url = t.url;
         if (t.file) button.dataset.path = t.file;
@@ -377,13 +900,16 @@ async function loadPlatforms() {
     platforms = d.platforms;
     const sel = $('#new-platform');
     sel.innerHTML = '<option value="">-- 选择平台 --</option>';
+    let n = 0;
     for (const p of d.platforms) {
       if (!p.url_template) continue;  // 无 ID 模板的平台走「粘贴完整网址」
       const opt = document.createElement('option');
       opt.value = p.name;
       opt.textContent = p.name;
       sel.appendChild(opt);
+      n++;
     }
+    $('#platform-hint').textContent = `已支持 ${d.platforms.length} 个平台，其中 ${n} 个支持 ID 快捷添加`;
   } catch (e) { toast('加载平台列表失败: ' + e.message, false); }
 }
 function switchMode() {
@@ -394,7 +920,7 @@ function switchMode() {
 }
 function onPlatformChange() {
   const p = platforms.find(x => x.name === $('#new-platform').value);
-  $('#new-id').placeholder = p && p.id_placeholder ? p.id_placeholder : '直播间ID / 用户名';
+  $('#new-id').placeholder = p && p.id_placeholder ? p.id_placeholder : '直播间 ID / 用户名';
 }
 async function addTask(event) {
   event.preventDefault();
@@ -407,7 +933,7 @@ async function addTask(event) {
       const platform = $('#new-platform').value;
       const id = $('#new-id').value.trim();
       if (!platform) return toast('请选择平台', false);
-      if (!id) return toast('请输入直播间ID/用户名', false);
+      if (!id) return toast('请输入直播间 ID / 用户名', false);
       await api('/api/tasks/from-id', { method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ platform, id, quality, name }) });
     } else {
@@ -422,7 +948,8 @@ async function addTask(event) {
   } catch (e) { toast('添加失败: ' + e.message, false); } });
 }
 async function removeTask(url, button) {
-  if (!confirm('确认删除该任务？')) return;
+  const ok = await confirmDlg('删除该任务？', url + '\n\n录制中的任务会立即停止。');
+  if (!ok) return;
   await withBusy(button, async () => { try {
     await api('/api/tasks?url=' + encodeURIComponent(url), { method: 'DELETE' });
     toast('已删除'); await Promise.all([loadTasks(), loadStatus()]);
@@ -432,12 +959,16 @@ async function toggleTask(url, commented, button) {
   await withBusy(button, async () => { try {
     await api(`/api/tasks/comment?url=${encodeURIComponent(url)}&commented=${commented}`, { method: 'PUT' });
     await loadTasks();
+    toast(commented ? '任务已暂停' : '任务已恢复');
   } catch (e) { toast('操作失败: ' + e.message, false); } });
 }
 
 // ---------- 配置 ----------
 async function loadConfig(force = false) {
-  if (configDirty && !force && !confirm('当前配置尚未保存，确认重新载入吗？')) return;
+  if (configDirty && !force) {
+    const ok = await confirmDlg('重新载入配置？', '当前配置尚未保存，重新载入将丢失未保存的更改。');
+    if (!ok) return;
+  }
   return once('config', async () => { try {
     configOriginal = await apiText('/api/config');
     $('#config-text').value = configOriginal;
@@ -447,8 +978,8 @@ async function loadConfig(force = false) {
 function setConfigDirty(dirty) {
   configDirty = dirty;
   const hint = $('#config-hint');
-  hint.textContent = dirty ? '有未保存的更改' : '保存后无需重启：录制进程每轮值守自动重读配置';
-  hint.className = dirty ? 'dirty' : 'muted';
+  hint.textContent = dirty ? '● 有未保存的更改' : '保存后无需重启：录制进程每轮值守自动重读配置';
+  hint.className = 'hintline' + (dirty ? ' dirty' : '');
 }
 async function saveConfig(button) {
   await withBusy(button, async () => { try {
@@ -470,9 +1001,14 @@ async function loadLogs() {
     if (!d.logs.length) { box.innerHTML = '<div class="empty">暂无日志</div>'; return; }
     for (const l of d.logs) {
       const row = document.createElement('div');
-      const time = new Date(l.time * 1000).toLocaleTimeString();
       row.className = 'row log-' + (l.level || 'INFO');
-      row.textContent = `[${time}] [${l.level}] ${l.message}`;
+      const chip = document.createElement('span');
+      chip.className = 'lvl'; chip.textContent = l.level || 'INFO';
+      const time = document.createElement('span');
+      time.className = 'ts'; time.textContent = new Date(l.time * 1000).toLocaleTimeString();
+      const body = document.createElement('span');
+      body.className = 'msg'; body.textContent = l.message;
+      row.appendChild(chip); row.appendChild(time); row.appendChild(body);
       box.appendChild(row);
     }
     if ($('#log-autoscroll').checked || nearBottom) box.scrollTop = box.scrollHeight;
@@ -488,10 +1024,18 @@ async function loadVideos() {
     renderVideos();
   } catch (e) { toast('加载文件失败: ' + e.message, false); } });
 }
+function fileIcon(name) {
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  if (['ass', 'srt', 'vtt'].includes(ext))
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 12h4m-4 4h7M14 9h3"/></svg>';
+  if (['mp3', 'm4a', 'ogg', 'wav'].includes(ext))
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="14" height="12" rx="3"/><path d="m16 10 6-3v10l-6-3"/></svg>';
+}
 function renderVideos() {
     const box = $('#file-list');
     box.innerHTML = '';
-    if (!videos.length) { box.innerHTML = '<div class="empty">暂无录制文件</div>'; return; }
+    if (!videos.length) { box.innerHTML = '<div class="empty"><div class="art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.2 3.9A2 2 0 0 0 7.5 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg></div><b>暂无录制文件</b><div class="muted">开播录制后，成品会按主播目录归档在这里</div></div>'; return; }
     // 按路径分组显示
     const groups = {};
     for (const f of videos) {
@@ -501,15 +1045,16 @@ function renderVideos() {
     }
     for (const [dir, files] of Object.entries(groups)) {
       const h = document.createElement('div');
-      h.innerHTML = `<div style="margin:10px 0 4px;color:var(--accent);font-weight:600;">📁 ${esc(dir)}</div>`;
+      h.className = 'group-h';
+      h.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.2 3.9A2 2 0 0 0 7.5 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg><span>${esc(dir)}</span><span class="count-chip">${files.length}</span>`;
       box.appendChild(h);
       for (const f of files) {
         const div = document.createElement('div');
         div.className = 'file-item';
         const path = f.path.split('/').map(encodeURIComponent).join('/');
         const playPath = encodePath('/api/videos/play/', f.path);
-        div.innerHTML = `<a class="path" href="${playPath}" data-play>${esc(f.name)}</a>
-          <span class="size">${fmtSize(f.size)}</span>
+        div.innerHTML = `<span class="file-ic">${fileIcon(f.name)}</span><a class="path" href="${playPath}" data-play title="${esc(f.path)}">${esc(f.name)}</a>
+          <span class="size mono">${fmtSize(f.size)}</span>
           <a class="btn sm" href="${appUrl('/videos/' + path)}" download>下载</a>`;
         div.querySelector('[data-play]').dataset.path = f.path;
         box.appendChild(div);
@@ -527,6 +1072,7 @@ function playVideo(path) {
   player.load();
   player.src = encodePath('/api/videos/play/', path);
   player.play().catch(() => {});
+  wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 // ---------- Tab ----------
@@ -564,7 +1110,14 @@ window.addEventListener('offline', updateNet);
 window.addEventListener('online', () => { updateNet(); loadStatus(); loadTasks(); });
 updateNet();
 
+// ---------- 对话框接线 ----------
+$('#dlg-cancel').onclick = () => closeDlg(false);
+$('#dlg-ok').onclick = () => closeDlg(true);
+$('#dlg-backdrop').addEventListener('click', e => { if (e.target.id === 'dlg-backdrop') closeDlg(false); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#dlg-backdrop').classList.contains('show')) closeDlg(false); });
+
 // ---------- 轮询 ----------
+initTheme();
 loadStatus(); loadTasks(); loadPlatforms();
 $('#new-mode').onchange = switchMode;
 $('#new-platform').onchange = onPlatformChange;
@@ -580,7 +1133,7 @@ $('#task-tbody').onclick = event => {
   if (button.dataset.action === 'play') playVideo(button.dataset.path);
 };
 $('#save-config').onclick = event => saveConfig(event.currentTarget);
-$('#reload-config').onclick = () => loadConfig();
+$('#reload-config').onclick = () => loadConfig(true);
 $('#config-text').oninput = () => setConfigDirty($('#config-text').value !== configOriginal);
 $('#refresh-logs').onclick = loadLogs;
 $('#refresh-videos').onclick = loadVideos;
