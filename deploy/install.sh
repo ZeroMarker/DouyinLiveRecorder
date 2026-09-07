@@ -8,7 +8,7 @@
 # 选项:
 #   --install-dir DIR   安装目录（默认 /opt/DouyinLiveRecorder）
 #   --port PORT         WebUI 端口（默认 8000）
-#   --user USER         服务运行用户（默认 douyinrec）
+#   --user USER         服务运行用户（默认 ubuntu）
 #   --no-venv           使用系统 python3 而非创建虚拟环境
 #   --no-systemd        仅安装文件，不注册/启动 systemd 服务
 #   --uninstall         卸载（停止并移除服务、删除用户；加 --purge 删除安装目录）
@@ -17,7 +17,7 @@ set -euo pipefail
 
 INSTALL_DIR="/opt/DouyinLiveRecorder"
 WEBUI_PORT="8000"
-SVC_USER="douyinrec"
+SVC_USER="ubuntu"
 USE_VENV=1
 USE_SYSTEMD=1
 UNINSTALL=0
@@ -54,7 +54,9 @@ if [[ "$UNINSTALL" == "1" ]]; then
     rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
     systemctl daemon-reload
   fi
-  if id "$SVC_USER" &>/dev/null; then
+  if [[ "$SVC_USER" == "ubuntu" ]]; then
+    warn "保留登录用户 ubuntu，仅移除服务（不删除用户）"
+  elif id "$SVC_USER" &>/dev/null; then
     userdel -r "$SVC_USER" 2>/dev/null || userdel "$SVC_USER"
     log "已删除用户 $SVC_USER"
   fi
@@ -112,8 +114,12 @@ fi
 # 2. 创建服务用户
 # ---------------------------------------------------------------------------
 if ! id "$SVC_USER" &>/dev/null; then
-  useradd --system --home-dir "$INSTALL_DIR" --shell /usr/sbin/nologin "$SVC_USER"
-  log "已创建系统用户 $SVC_USER"
+  if [[ "$SVC_USER" == "ubuntu" ]]; then
+    useradd --create-home --shell /bin/bash "$SVC_USER"
+  else
+    useradd --system --home-dir "$INSTALL_DIR" --shell /usr/sbin/nologin "$SVC_USER"
+  fi
+  log "已创建用户 $SVC_USER"
 fi
 
 # ---------------------------------------------------------------------------

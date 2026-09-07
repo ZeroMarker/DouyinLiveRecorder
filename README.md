@@ -142,12 +142,12 @@ docker compose up -d
 **方式四：systemd 服务（服务器长期值守推荐）**
 
 ```bash
-# 一键安装（自动安装 ffmpeg/nodejs、创建专用用户、注册开机自启）
+# 一键安装（自动安装 ffmpeg/nodejs、注册开机自启，服务以 ubuntu 用户运行）
 # 本机 8000 已被其他服务占用，因此使用 8001
 sudo ./deploy/install.sh --port 8001
 
 # 可选参数
-sudo ./deploy/install.sh --port 9000 --install-dir /opt/DouyinLiveRecorder --user douyinrec
+sudo ./deploy/install.sh --port 9000 --install-dir /opt/DouyinLiveRecorder --user ubuntu
 
 # 查看状态 / 日志 / 重启
 systemctl status douyinliverecorder
@@ -175,7 +175,7 @@ your-domain.example {
 示例使用安装命令中的 `8001` 端口；若通过 `--port` 指定了其他端口，请同步修改 `reverse_proxy`。合并后可执行 `caddy validate --config /etc/caddy/Caddyfile` 检查配置，再重新加载 Caddy。WebUI 访问路径为 `https://your-domain.example/douyin/`，并受站点现有 Basic Auth 保护。
 
 服务说明：
-- 以专用系统用户 `douyinrec` 运行，`Restart=on-failure` 崩溃自动拉起
+- 以 `ubuntu` 用户运行，`Restart=on-failure` 崩溃自动拉起
 - 服务模式下 `DLR_NO_INPUT=1`：URL 列表为空时不再阻塞等待输入，直接通过 WebUI 添加任务
 - 所有日志统一进 journald，也可在 `logs/` 目录查看运行日志
 - 容器环境（无 systemd）请使用 Docker 方式或 `./deploy/install.sh --no-systemd`
