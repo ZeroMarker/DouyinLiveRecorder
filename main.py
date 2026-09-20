@@ -30,6 +30,7 @@ import httpx
 from src import spider, stream
 from src import config as app_config
 from src import state
+from src import deploy_check
 from src.adapters import registry, ResolveContext
 from src.url_config import TaskStore
 from src.proxy import ProxyDetector
@@ -95,6 +96,27 @@ if '--web' in sys.argv:
         print(f'WebUI 已启动: http://{webui_host}:{webui_port}')
     except Exception as e:
         logger.error(f'WebUI 启动失败: {e}')
+
+
+def check_deploy() -> None:
+    """安装目录与安装清单比对（见 src/deploy_check.py）。
+
+    安装脚本会把每个代码文件的哈希写进 .deploy-manifest.json；这里启动时比对一次，
+    文件来自不同版本（跨版本混装）时接口会不匹配，必须显式报出来而不是等到某个操作
+    路径上抛异常；含本地改动的部署也会提示一句。WebUI 通过 /api/status 自行读取同一
+    结果（见 webui/app.py，带缓存的同一次比对）。
+    """
+    info = deploy_check.verify_cached(script_path)
+    message = deploy_check.report(info)
+    if message:
+        logger.error(message)
+    else:
+        notice = deploy_check.dirty_notice(info)
+        if notice:
+            logger.warning(notice)
+
+
+check_deploy()
 
 
 def signal_handler(_signal, _frame):

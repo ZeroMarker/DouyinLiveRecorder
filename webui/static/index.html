@@ -203,6 +203,15 @@ a:hover { text-decoration: underline; }
   background: var(--md-warning-container); color: var(--md-on-warning-container);
   text-align: center; padding: 8px 16px; font-size: 13px; font-weight: 500;
 }
+/* ---------- deploy banner（安装清单比对失败/含本地改动） ---------- */
+#deploy-banner {
+  background: var(--md-error-container); color: var(--md-on-error-container);
+  text-align: center; padding: 8px 16px; font-size: 13px; font-weight: 500;
+  line-height: 1.5;
+}
+#deploy-banner.warn {
+  background: var(--md-warning-container); color: var(--md-on-warning-container);
+}
 /* ---------- M3 medium top app bar ---------- */
 .appbar {
   position: sticky; top: 0; z-index: 50;
@@ -583,6 +592,7 @@ textarea {
 </head>
 <body>
 <div id="offline-banner">当前离线，显示的是最近一次缓存的数据</div>
+<div id="deploy-banner" role="alert" hidden></div>
 
 <header class="appbar">
   <div class="appbar-row">
@@ -856,9 +866,31 @@ async function loadStatus() {
       $('#c-tasks').textContent = s.task_count;
       $('#c-disk').textContent = s.disk_free_gb;
       $('#c-platforms').textContent = s.platform_count;
+      renderDeploy(s.deploy);
       setConnection(true); markUpdated();
     } catch (e) { setConnection(false); }
   });
+}
+function renderDeploy(d) {
+  const b = $('#deploy-banner');
+  b.classList.remove('warn');
+  if (!d || ['no_manifest', 'unknown'].includes(d.state)) {
+    b.hidden = true; b.textContent = ''; return;
+  }
+  if (d.state === 'unverified') {
+    b.textContent = '安装目录的部署清单已丢失，无法校验代码版本；请重新执行 deploy/install.sh 重建清单';
+  } else if (d.state === 'skew') {
+    b.textContent = `部署校验失败：${d.skew_count} 个代码文件与安装清单不一致（跨版本混装）`
+      + '，请重新执行 deploy/install.sh 并重启服务；详情见服务日志或 deploy/install.sh --check';
+  } else if (d.state === 'extra') {
+    b.textContent = `部署目录存在 ${d.extra_count} 个清单外文件，建议重新执行 deploy/install.sh 清理`;
+  } else if (d.dirty) {
+    b.classList.add('warn');
+    b.textContent = '当前部署安装自含未提交改动的源码目录：能发现事后被改坏，但无法判断这些改动是否符合预期';
+  } else {
+    b.hidden = true; b.textContent = ''; return;
+  }
+  b.hidden = false;
 }
 
 // ---------- 任务 ----------

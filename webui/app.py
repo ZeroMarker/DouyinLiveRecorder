@@ -24,6 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from src import state, utils
+from src import deploy_check
 from src.adapters import registry
 from src.url_config import DEFAULT_QUALITY, QUALITIES, TaskStore
 
@@ -207,6 +208,7 @@ def create_app(config_file: str, url_config_file: str, downloads_path: str,
     def api_status():
         entries, _ = store.load()
         disk = utils.check_disk_capacity(downloads_path)
+        deploy = deploy_check.verify_cached(script_path) if script_path else {}
         return {
             'running': True,
             'version': version,
@@ -214,6 +216,7 @@ def create_app(config_file: str, url_config_file: str, downloads_path: str,
             'task_count': len(entries),
             'disk_free_gb': round(disk, 2),
             'platform_count': len(registry.all()),
+            'deploy': deploy_check.summarize(deploy),
         }
 
     # ------------------------------------------------------------------ 任务

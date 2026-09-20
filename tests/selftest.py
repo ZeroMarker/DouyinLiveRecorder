@@ -1,6 +1,9 @@
 # -*- encoding: utf-8 -*-
 """重构自测：验证适配器注册表 / 配置加载 / URL 解析 / WebUI 应用。"""
+import contextlib
+import io
 import os
+import shutil
 import sys
 import tempfile
 
@@ -243,6 +246,155 @@ check('DELETE 任务', r.status_code == 200)
 check('DELETE 触发停止请求', state.stop_requested('https://live.douyin.com/999'))
 state.clear_stop('https://live.douyin.com/999')
 check('clear_stop 消费请求', not state.stop_requested('https://live.douyin.com/999'))
+
+# ---------- 5. 部署校验（安装清单） ----------
+print('[5] 部署校验')
+from src import deploy_check
+
+dep_dir = tempfile.mkdtemp()
+os.makedirs(os.path.join(dep_dir, 'src', '__pycache__'))
+os.makedirs(os.path.join(dep_dir, 'config'))
+os.makedirs(os.path.join(dep_dir, 'logs'))
+os.makedirs(os.path.join(dep_dir, 'webui', 'static'))
+write_text = lambda rel, text: open(os.path.join(dep_dir, rel), 'w', encoding='utf-8').write(text)
+write_text('main.py', 'print(1)\n')
+write_text('src/url_config.py', 'def remove(url): return True\n')
+write_text('webui/static/index.html', '<html></html>\n')
+write_text('src/__pycache__/x.pyc', 'x')          # 字节码不参与
+write_text('config/URL_config.ini', '原画,https://live.douyin.com/1\n')  # 运行数据不参与
+write_text('logs/run.log', 'log\n')               # 运行日志不参与
+
+files = deploy_check.iter_code_files(dep_dir)
+check('清单只收录代码文件', files == ['main.py', 'src/url_config.py', 'webui/static/index.html'],
+      f'实际 {files}')
+
+info = deploy_check.make_manifest(dep_dir, source='/tmp/src', meta={'commit': 'abc123', 'branch': 'main'})
+check('清单记录来源提交', info['file_count'] == 3 and info['commit'] == 'abc123')
+check('一致时校验通过', deploy_check.verify(dep_dir)['state'] == 'ok')
+
+# 跨版本混装：只有一侧文件被替换（线上“删除任务后仍继续录制”的成因）
+write_text('src/url_config.py', 'def remove(url): return []\n')
+skew = deploy_check.verify(dep_dir)
+check('检出跨版本混装', skew['state'] == 'skew'
+      and [i['path'] for i in skew['mismatched']] == ['src/url_config.py'])
+check('告警文案指明重新部署', 'install.sh' in deploy_check.report(skew))
+
+os.remove(os.path.join(dep_dir, 'main.py'))
+check('检出文件缺失', deploy_check.verify(dep_dir)['missing'] == ['main.py'])
+write_text('main.py', 'print(1)\n')
+write_text('src/url_config.py', 'def remove(url): return True\n')
+write_text('webui/static/app.py', '# 上次安装残留\n')
+extra = deploy_check.verify(dep_dir)
+check('检出清单外残留文件', extra['state'] == 'extra' and extra['extra'] == ['webui/static/app.py'])
+check('无清单时跳过校验', deploy_check.verify(tempfile.mkdtemp())['state'] == 'no_manifest')
+
+# 运维自己放进安装目录的东西：不参与校验，也不能被安装脚本删掉
+os.makedirs(os.path.join(dep_dir, 'mybackup'), exist_ok=True)
+write_text('mybackup/keep.txt', 'op data\n')
+os.remove(os.path.join(dep_dir, 'webui', 'static', 'app.py'))
+write_text('main.py', 'print(2)\n')                     # 模拟源码更新
+info2 = deploy_check.make_manifest(dep_dir, source='/tmp/src')
+check('清单不含运维自建目录', all(not p.startswith('mybackup/') for p in info2['files']),
+      f'实际 {sorted(info2["files"])}')
+remove, preserved = deploy_check.prune_candidates(dep_dir, '/tmp/src')
+check('清理列表含旧代码', 'main.py' in remove and 'src' in remove, f'实际 {remove}')
+check('运维自建目录不被清理', preserved == ['mybackup'], f'实际 {preserved}')
+check('运维目录内容变动不影响校验', deploy_check.verify(dep_dir)['state'] == 'ok')
+
+# 清单被误删：装过的目录必须告警，而不是静默跳过校验
+marker = os.path.join(dep_dir, deploy_check.SENTINEL_NAME)
+open(marker, 'w', encoding='utf-8').write('2026-09-20 04:00:00\n')
+os.remove(os.path.join(dep_dir, deploy_check.MANIFEST_NAME))
+lost = deploy_check.verify(dep_dir)
+check('清单丢失后按“无法校验”告警', lost['state'] == 'unverified'
+      and 'deploy/install.sh' in deploy_check.report(lost), f'实际 {lost["state"]}')
+os.remove(marker)
+check('未安装过的目录仍跳过校验', deploy_check.verify(dep_dir)['state'] == 'no_manifest')
+
+# 清单取自源码：安装目录多出的文件必须报 extra，不能被"洗白"成已安装内容
+src_dir = tempfile.mkdtemp()
+inst_dir = tempfile.mkdtemp()
+for d, rels in ((src_dir, ('main.py', 'src/url_config.py')), (inst_dir, ('main.py', 'src/url_config.py'))):
+    for rel in rels:
+        full = os.path.join(d, rel)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        open(full, 'w', encoding='utf-8').write(rel + '\n')
+open(os.path.join(inst_dir, 'src', 'legacy.py'), 'w', encoding='utf-8').write('# 清理残留\n')
+deploy_check.make_manifest(inst_dir, source=src_dir, meta={'commit': 'c0ffee'})
+residue = deploy_check.verify(inst_dir)
+check('清单按源码生成，残留文件暴露为 extra',
+      residue['state'] == 'extra' and residue['extra'] == ['src/legacy.py'],
+      f'实际 {residue["state"]} {residue["extra"]}')
+open(os.path.join(inst_dir, 'main.py'), 'w', encoding='utf-8').write('被改过的 main.py\n')
+check('安装目录内容与源码不符报 skew', deploy_check.verify(inst_dir)['state'] == 'skew')
+check('清单记录项目条目', deploy_check.load_manifest(inst_dir).get('entries') == ['main.py', 'src'],
+      f'实际 {deploy_check.load_manifest(inst_dir).get("entries")}')
+
+# 源码目录消失后校验范围不能漂移（否则运维自建目录会被误报为清单外文件）
+os.remove(os.path.join(inst_dir, 'src', 'legacy.py'))     # 清掉上一步的残留
+open(os.path.join(inst_dir, 'main.py'), 'w', encoding='utf-8').write('main.py\n')  # 还原上一步的篡改
+os.makedirs(os.path.join(inst_dir, 'mybackup'), exist_ok=True)
+open(os.path.join(inst_dir, 'mybackup', 'keep.txt'), 'w', encoding='utf-8').write('op\n')
+deploy_check.make_manifest(inst_dir, source=src_dir)
+check('清理残留后校验通过', deploy_check.verify(inst_dir)['state'] == 'ok')
+shutil.rmtree(src_dir)
+gone = deploy_check.verify(inst_dir)
+check('源码目录消失后不误报清单外文件', gone['state'] == 'ok', f'实际 {gone["state"]} {gone["extra"]}')
+
+# 名字不安全的条目（含换行等）必须让安装中止，而不是把拆分后的片段拼进删除目标
+check('名字安全判定', deploy_check.is_safe_component('webui') and not deploy_check.is_safe_component('a\nb')
+      and not deploy_check.is_safe_component('..') and not deploy_check.is_safe_component('a/b')
+      and not deploy_check.is_safe_component(''))
+bad_dir = tempfile.mkdtemp()
+open(os.path.join(bad_dir, 'evil\nname'), 'w', encoding='utf-8').write('x')
+open(os.path.join(bad_dir, 'config'), 'w', encoding='utf-8').write('keep\n')
+check('检出名字不安全的条目', deploy_check.unsafe_entries(bad_dir) == ['evil\nname'])
+remove_bad, preserve_bad = deploy_check.prune_candidates(bad_dir, dep_dir)
+check('不安全名字不进入删除列表', 'evil\nname' not in remove_bad and 'config' not in remove_bad,
+      f'实际 remove={remove_bad}')
+with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+    unsafe_rc = deploy_check.main(['prune', '--dir', bad_dir])
+    ok_rc = deploy_check.main(['prune', '--dir', dep_dir, '--source', dep_dir])
+check('prune 对不安全名字返回非 0', unsafe_rc == 3, f'实际 {unsafe_rc}')
+check('prune 正常目录返回 0', ok_rc == 0, f'实际 {ok_rc}')
+
+# 运维放在安装目录里的文件不能算「清单外文件」：否则重跑安装也无法消除，
+# 而安装脚本曾把该状态当成致命错误（代码已替换、服务却没重启）
+op_dir = tempfile.mkdtemp()
+os.makedirs(os.path.join(op_dir, 'src'))
+for rel, text in (('main.py', 'main\n'), ('src/a.py', 'a\n')):
+    open(os.path.join(op_dir, rel), 'w', encoding='utf-8').write(text)
+deploy_check.make_manifest(op_dir, source=op_dir, meta={'commit': 'c1'})
+open(os.path.join(op_dir, '.env'), 'w', encoding='utf-8').write('SECRET=1\n')
+open(os.path.join(op_dir, 'start.sh'), 'w', encoding='utf-8').write('#!/bin/sh\n')
+check('安装目录根部的运维文件不算清单外文件',
+      deploy_check.verify(op_dir)['state'] == 'ok',
+      f'实际 {deploy_check.verify(op_dir)}')
+
+# 但项目目录内部的非本项目文件仍应报出来（升级会替换整个项目目录）
+open(os.path.join(op_dir, 'src', 'operator.conf'), 'w', encoding='utf-8').write('op\n')
+adv = deploy_check.verify(op_dir)
+check('项目目录内的额外文件报 extra 且为提示性质', adv['state'] == 'extra'
+      and adv['extra'] == ['src/operator.conf'], f'实际 {adv["state"]} {adv["extra"]}')
+with contextlib.redirect_stdout(io.StringIO()):
+    relax_rc = deploy_check.main(['verify', '--dir', op_dir])
+    strict_rc = deploy_check.main(['verify', '--dir', op_dir, '--strict'])
+check('extra 默认退出码为提示码', relax_rc == deploy_check.EXTRA_EXIT_CODE, f'实际 {relax_rc}')
+check('extra --strict 视为失败', strict_rc == 1, f'实际 {strict_rc}')
+check('升级前列出会被删除的运维文件',
+      deploy_check.files_lost_on_copy(op_dir, src_dir) == ['src/operator.conf'],
+      f'实际 {deploy_check.files_lost_on_copy(op_dir, src_dir)}')
+check('源码中存在的文件不算会被删除',
+      deploy_check.files_lost_on_copy(op_dir, op_dir) == [],
+      f'实际 {deploy_check.files_lost_on_copy(op_dir, op_dir)}')
+check('运行数据与根部运维文件不在会被删除之列',
+      'config/URL_config.ini' not in deploy_check.files_lost_on_copy(dep_dir, dep_dir)
+      and '.env' not in deploy_check.files_lost_on_copy(op_dir, src_dir))
+
+r = client.get('/api/status')
+check('WebUI 状态含部署字段', r.json().get('deploy', {}).get('state') == 'no_manifest',
+      f'实际 {r.json().get("deploy")}')
+
 print()
 if failures:
     print(f'❌ {len(failures)} 项失败: {failures}')
