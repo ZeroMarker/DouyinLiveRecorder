@@ -196,7 +196,10 @@ if command -v git &>/dev/null && git -C "$SRC_DIR" rev-parse --git-dir &>/dev/nu
     fi
     warn "已按 --allow-dirty 继续：清单按当前工作区内容生成（会标记 dirty），WebUI 与日志会持续提示该部署含本地改动"
   fi
-  log "源码来源: ${SRC_BRANCH:-?} ${SRC_COMMIT:0:12}${SRC_DIRTY:+ (含未提交改动)}"
+  # 注意不能用 ${SRC_DIRTY:+ ...}：该变量始终有值（"false"），会无条件拼上后缀
+  DIRTY_LABEL=""
+  if [[ "$SRC_DIRTY" == "true" ]]; then DIRTY_LABEL=" (含未提交改动)"; fi
+  log "源码来源: ${SRC_BRANCH:-?} ${SRC_COMMIT:0:12}${DIRTY_LABEL}"
 else
   warn "源码目录不是 git 仓库，无法登记提交号（安装清单仍会记录文件哈希）"
 fi
