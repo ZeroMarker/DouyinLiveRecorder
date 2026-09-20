@@ -183,6 +183,8 @@ your-domain.example {
 
 ### 部署完整性校验（安装清单）
 
+> 已知问题与遗留事项（未修复项）见 [`docs/known-issues.md`](docs/known-issues.md)。
+
 安装时 `deploy/install.sh` 会生成 sha256 清单 `.deploy-manifest.json`，安装结束、服务启动、WebUI 加载 `/api/status` 时各比对一次。目的是拦住**跨版本混装**：安装目录里一部分文件是新版、一部分是旧版，两侧接口不匹配，只会在某条操作路径上抛运行时错误（曾出现：`TaskStore.remove()` 返回 `bool` 被当列表遍历 → `TypeError`，任务在界面上已删除、配置文件里的行也已移除，但停止录制请求没发出去，ffmpeg 继续录制）。
 
 要点：
