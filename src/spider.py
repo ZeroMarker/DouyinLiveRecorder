@@ -3014,17 +3014,33 @@ async def get_youtube_stream_url(url: str, proxy_addr: OptionalStr = None, cooki
         headers['Cookie'] = cookies
 
     html_str = await async_req(url, proxy_addr=proxy_addr, headers=headers, abroad=True)
-    json_str = re.search('var ytInitialPlayerResponse = (.*?);var meta = document\\.createElement', html_str).group(1)
-    json_data = json.loads(json_str)
     result = {"anchor_name": "", "is_live": False}
-    if 'videoDetails' not in json_data:
+
+    # YouTube 会不定期改写 ytInitialPlayerResponse 之后跟随的脚本（例如从
+    # `;var meta = document.createElement` 变成 `;var head = ...; var meta = ...`），
+    # 所以不能用固定结尾的正则截取，改为定位赋值处后直接解码 JSON。
+    matched = re.search(r'ytInitialPlayerResponse\s*=\s*', html_str)
+    if not matched:
+        print(f"Error: 未在页面中找到 YouTube 播放数据({url})，请检查网络/代理是否正常")
+        return result
+    try:
+        json_data, _ = json.JSONDecoder().raw_decode(html_str, matched.end())
+    except ValueError:
+        print(f"Error: YouTube 播放数据解析失败({url})")
+        return result
+
+    playability = (json_data.get('playabilityStatus') or {}).get('status')
+    if 'videoDetails' not in json_data or playability in ('LOGIN_REQUIRED', 'AGE_VERIFICATION_REQUIRED'):
         print("Error: Please log in to YouTube on your device's webpage and configure cookies in the config.ini")
         return result
     result['anchor_name'] = json_data['videoDetails']['author']
     live_status = json_data['videoDetails'].get('isLive')
     if live_status:
+        m3u8_url = (json_data.get('streamingData') or {}).get('hlsManifestUrl')
+        if not m3u8_url:
+            print("Error: 未获取到 YouTube 直播流地址，请检查 Cookie 是否有效")
+            return result
         live_title = json_data['videoDetails']['title']
-        m3u8_url = json_data['streamingData']["hlsManifestUrl"]
         play_url_list = await get_play_url_list(m3u8_url, proxy=proxy_addr, header=headers, abroad=True)
         result |= {"is_live": True, "title": live_title, "m3u8_url": m3u8_url, "play_url_list": play_url_list}
     return result

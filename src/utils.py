@@ -7,6 +7,7 @@ import string
 from pathlib import Path
 import functools
 import hashlib
+import inspect
 import re
 import traceback
 from typing import Any
@@ -36,19 +37,32 @@ class Color:
 
 
 def trace_error_decorator(func: callable) -> callable:
+    def handle(exc: Exception) -> None:
+        if isinstance(exc, execjs.ProgramError):
+            logger.warning('Failed to execute JS code. Please check if the Node.js environment')
+        else:
+            error_line = traceback.extract_tb(exc.__traceback__)[-1].lineno
+            error_info = f"message: type: {type(exc).__name__}, {str(exc)} in function {func.__name__} at line: {error_line}"
+            logger.error(error_info)
+
     @functools.wraps(func)
     def wrapper(*args: list, **kwargs: dict) -> Any:
         try:
             return func(*args, **kwargs)
-        except execjs.ProgramError:
-            logger.warning('Failed to execute JS code. Please check if the Node.js environment')
         except Exception as e:
-            error_line = traceback.extract_tb(e.__traceback__)[-1].lineno
-            error_info = f"message: type: {type(e).__name__}, {str(e)} in function {func.__name__} at line: {error_line}"
-            logger.error(error_info)
-            return []
+            handle(e)
+            return None
 
-    return wrapper
+    @functools.wraps(func)
+    async def async_wrapper(*args: list, **kwargs: dict) -> Any:
+        try:
+            return await func(*args, **kwargs)
+        except Exception as e:
+            handle(e)
+            return None
+
+    # 异步函数必须把 await 包在 try 里，只包调用等于什么都没捕获
+    return async_wrapper if inspect.iscoroutinefunction(func) else wrapper
 
 
 def check_md5(file_path: str | Path) -> str:

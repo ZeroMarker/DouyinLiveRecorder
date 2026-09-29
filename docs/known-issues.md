@@ -154,3 +154,59 @@ const label = t.commented ? '已暂停' : (STATUS_LABEL[rawStatus] || '未知');
   等运行数据：不参与校验，升级时保留；
 - **项目目录内部**的文件（如 `webui/caddy.conf`）：升级会随项目目录整体替换而删除
   （无法与"上一版残留的代码文件"可靠区分）。安装脚本会在删除前列出这些文件提醒搬走。
+
+---
+
+## 6. YouTube 频道页（`/@handle/live`）在未开播时无法区分「未开播」与「故障」
+
+**症状**：WebUI 快捷添加 YouTube 任务生成的是
+`https://www.youtube.com/@{handle}/live`（见 `src/adapters.py` 的 `url_template`）。
+频道**正在直播**时该页面含 `ytInitialPlayerResponse`，解析正常；频道**未开播**时
+YouTube 返回的是完全不同的页面，**整页不含** `ytInitialPlayerResponse`：
+
+```
+$ https://www.youtube.com/@mkbhd/live        # 未开播
+len 873628   ytInitialPlayerResponse 出现 1 次 —— 仅出现在 JS 函数调用里
+                                     （a.ytPageType,a.ytCommand,a.ytInitialData,a.ytInitialPlayerResponse,...），
+                                     无 `var ytInitialPlayerResponse = {...}` 赋值
+$ https://www.youtube.com/@CNN/live         # 正在直播
+len 1205155  有该赋值，可正常解析
+```
+
+因此 `get_youtube_stream_url` 走「未找到播放数据」分支，只能报
+"请检查网络/代理是否正常"，**无法表达"该频道当前没在播"**。
+
+**为什么没一并修掉**：按频道 Handle 判断开播需要另建一套解析——实测 YouTube 已改版，
+InnerTube `browse` 的 Live tab 不再返回 `liveBroadcastDetails` / `isLiveNow`，
+改以 `richItemRenderer` 下发；且真正取流地址时仍受 `youtube_cookie` 限制
+（见下）。这是一块独立工作量，未纳入本次修复。
+
+**建议修法**：对 `@handle` / `/channel/UCxxx` / `/c/xxx` / `/user/xxx` 这类频道地址，
+先经 `browse` API 解析出当前直播的 `videoId`，再按普通 watch 页解析；
+解析不到时按"未开播"处理而非按"故障"处理。
+
+**注意**：在此之前，**监控 YouTube 请直接用 `/watch?v=视频ID` 形式的地址**，
+不要用频道页——频道页在未开播时会持续产生无意义的失败重试。
+
+---
+
+## 7. YouTube 取流强依赖登录 Cookie 与可用代理（外部限制）
+
+**现状**：`get_youtube_stream_url` 走网页 `ytInitialPlayerResponse` 解析。YouTube 已对
+机房/数据中心 IP 强制登录校验：实测不带 Cookie 时，直播视频的
+`playabilityStatus.status` 为 `LOGIN_REQUIRED`，`streamingData` 为空。
+换 InnerTube 客户端无效，五种均被拦：
+
+| 客户端 | playability | hlsManifestUrl |
+|---|---|---|
+| WEB / MWEB / ANDROID / IOS | `LOGIN_REQUIRED` | 无 |
+| TVHTML5_SIMPLY_EMBEDDED_PLAYER | `ERROR` | 无 |
+
+**影响**：`config.ini` 的 `youtube_cookie` 为空时，YouTube 任务无法录制；
+`YoutubeAdapter.force_proxy = True`，且 `是否使用代理ip` 为 `是` 而 `代理地址` 为空时，
+`check_proxy` 会直接返回 `None`（日志："网络异常，请检查本网络是否能正常访问Youtube平台"）。
+
+**必须由用户自行处理**（代码无法绕过）：
+
+1. 浏览器登录 YouTube 后，把完整 Cookie 填入 `config.ini` 的 `youtube_cookie`；
+2. 二选一：填写 `代理地址`，或把 `是否跳过代理检测(是/否)` 改为 `是`。

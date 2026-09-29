@@ -677,7 +677,9 @@ def start_record(url_data: tuple, count_variable: int = -1) -> None:
                     )
                     # 平台解析由适配器完成（新增平台见 src/adapters.py，无需改本文件）
                     port_info = asyncio.run(adapter.resolve(record_url, ctx))
-                    if port_info is None:
+                    if not port_info:
+                        state.update_task(record_url, status=state.ERROR, recording_since=0,
+                                          message=f'{platform} 解析失败（网络/代理/Cookie）')
                         continue  # 解析失败（网络/无代理），等待下一轮检测
 
                     # new_cookies / new_token 写回 config.ini
@@ -1309,6 +1311,12 @@ def start_record(url_data: tuple, count_variable: int = -1) -> None:
             with max_request_lock:
                 error_count += 1
                 error_window.append(1)
+            try:
+                # 不上报的话 WebUI 会一直停在“等待检测”，看不到真实报错
+                state.update_task(url_data[1], status=state.ERROR, recording_since=0,
+                                  message=f'解析失败: {e}')
+            except Exception:
+                pass
             time.sleep(2)
 
 
