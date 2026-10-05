@@ -98,6 +98,7 @@
     ├── main.py -> (main file)
     ├── ffmpeg_install.py -> (ffmpeg install script)
     ├── demo.py -> (call package test demo)
+    ├── download_douyin_videos.py -> (下载抖音用户主页的全部可见视频)
     ├── msg_push.py -> (send live status update message)
     ├── index.html -> (play m3u8 and flv video)
     ├── requirements.txt -> (library dependencies)
@@ -114,6 +115,34 @@
 > 3. 在 `src/adapters.py` 中继承 `TwoStepAdapter` / `DirectAdapter` 写一个适配器类并加 `@register_adapter`。
 
 </div>
+
+## 📥 下载抖音用户的全部视频
+
+独立脚本 `download_douyin_videos.py` 通过浏览器打开用户主页，收集网页加载的作品列表并自动滚动翻页，下载当前登录账号可见的全部视频。需要 Python 3.10+ 和图形桌面（Windows、macOS 或桌面版 Linux）；纯 SSH/无桌面的服务器不能直接弹出登录窗口。
+
+首次安装额外依赖和浏览器：
+
+```bash
+python -m pip install -r requirements-video.txt
+python -m playwright install chromium
+```
+
+在项目目录运行：
+
+```bash
+python download_douyin_videos.py "https://www.douyin.com/user/MS4wLjABAAAA..."
+```
+
+也支持以 `MS4wLj` 开头的 `sec_uid`、用户主页分享短链，以及包含主页链接的整段分享文本。数字抖音号、单条视频链接和直播链接不适用。浏览器打开后，完成登录或验证，确认停留在目标用户主页的「作品」页，再回到终端按 Enter。脚本会在新标签页重新打开主页，从第一页开始下载，直到网页接口明确返回没有下一页。
+
+视频默认保存为 `downloads/douyin_videos/<sec_uid>/<视频ID>.mp4`，按可用地址优先选择高码率版本。再次运行会跳过已下载的 MP4；未完成的下载不会保留为正式文件，失败视频会在下次运行时重新尝试。图文作品会跳过并单独计数。私密、已删除及当前账号无权查看的作品无法下载。
+
+```bash
+python download_douyin_videos.py "用户主页链接" -o "downloads/用户视频" --retries 3 --idle-timeout 120
+python download_douyin_videos.py --help
+```
+
+登录资料默认保存在 `downloads/.douyin-browser`，可用 `--browser-profile` 指定其他目录；该目录包含登录会话，请勿分享或提交到 Git，也不要同时运行多个使用同一目录的脚本。下载期间保持浏览器打开并停留在目标主页。若列表超时或接口出错，脚本会报错并以非零状态退出，不会宣称全部下载完成；已成功保存的视频仍然保留。退出码 `0` 表示列表已到末尾且无下载失败，`1` 表示失败或未确认完整性，`130` 表示手动中断。
 
 ## 🌐 WebUI 管理界面
 
