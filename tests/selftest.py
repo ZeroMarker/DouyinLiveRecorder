@@ -199,9 +199,15 @@ r = client.get('/api/config')
 check('GET /api/config 文本', r.status_code == 200)
 r = client.get('/')
 check('GET / 页面', r.status_code == 200 and 'DouyinLiveRecorder' in r.text)
+check('WebUI 使用 CDN import map 和 Lit 入口',
+      'type="importmap"' in r.text and '@material/web@2.4.1/' in r.text and './static/app.js' in r.text)
+r = client.get('/static/app.js')
+check('WebUI 静态模块可访问', r.status_code == 200 and "from 'lit'" in r.text)
 check('WebUI 含任务搜索与连接状态',
       'id="task-search"' in r.text and 'id="connection"' in r.text)
-check('WebUI 操作不使用内联事件', 'onclick=' not in r.text and 'onchange=' not in r.text)
+check('WebUI 操作不使用 HTML 内联事件', 'onclick=' not in r.text and 'onchange=' not in r.text)
+r = client.get('/static/styles.css')
+check('WebUI 样式可访问', r.status_code == 200 and '--md-sys-color-primary' in r.text)
 r = client.get('/sw.js')
 check('Service Worker 不缓存配置与日志',
       r.status_code == 200 and "path === '/api/config'" in r.text and "path.startsWith('/api/logs')" in r.text)

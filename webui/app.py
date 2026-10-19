@@ -157,6 +157,8 @@ def create_app(config_file: str, url_config_file: str, downloads_path: str,
         with open(os.path.join(STATIC_DIR, 'index.html'), encoding='utf-8') as f:
             return HTMLResponse(f.read(), headers={'Cache-Control': 'no-cache'})
 
+    app.mount('/static', StaticFiles(directory=STATIC_DIR), name='static')
+
     # ------------------------------------------------------------- PWA 资源
     @app.get('/manifest.webmanifest')
     def manifest():

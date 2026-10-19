@@ -94,7 +94,7 @@
     ├── /webui -> (Web 管理界面，FastAPI)
         ├── app.py -> (FastAPI 应用：任务/配置/状态/日志/文件 API)
         ├── server.py -> (启动入口：python -m webui 或 main.py --web 内置)
-        ├── /static/index.html -> (单页管理界面)
+        ├── /static -> (index.html 入口、app.js Lit 组件、styles.css 主题及 PWA 资源)
     ├── main.py -> (main file)
     ├── ffmpeg_install.py -> (ffmpeg install script)
     ├── demo.py -> (call package test demo)
@@ -146,7 +146,9 @@ python download_douyin_videos.py --help
 
 ## 🌐 WebUI 管理界面
 
-内置 Web 管理界面（FastAPI），支持：任务增删/暂停恢复、配置在线编辑、录制状态实时查看、日志面板、已录制文件播放与下载。
+内置 Web 管理界面（FastAPI + Lit + Material Web），支持：任务增删/暂停恢复、配置在线编辑、录制状态实时查看、日志面板、已录制文件播放与下载。
+
+前端通过 import map 从 jsDelivr CDN 加载固定版本的 Lit 3 和 Material Web 2，无需 Node.js 或构建步骤。首次访问需要浏览器能连接 `cdn.jsdelivr.net`；HTTPS 或 localhost 环境下，Service Worker 会缓存界面和已加载的 CDN 模块，供后续离线打开。配置、日志和媒体文件不缓存。支持明暗主题、移动端布局及 `/douyin/` 等反向代理子路径。
 
 **方式一：内置启动（推荐，可看实时状态）**
 
