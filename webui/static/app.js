@@ -157,6 +157,10 @@ class RecorderApp extends LitElement {
     return this.load('platforms', async () => {
       const data = await this.request('/api/platforms');
       this.platforms = data.platforms || []; this.qualities = data.qualities || [];
+      await this.updateComplete;
+      if (!this.platform && this.platforms.some(p => p.name === '抖音直播' && p.url_template)) {
+        this.platform = '抖音直播';
+      }
     });
   }
   async selectTab(tab) {

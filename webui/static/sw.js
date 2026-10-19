@@ -1,5 +1,5 @@
 /* Cache the shell and pinned CDN modules; never persist config, logs or media. */
-const VERSION = '2026.10.19.1';
+const VERSION = '2026.10.19.2';
 const CACHE_PREFIX = `dlr-webui-${self.registration.scope}::`;
 const SCOPED_CACHE = `${CACHE_PREFIX}${VERSION}`;
 const PRECACHE = [
