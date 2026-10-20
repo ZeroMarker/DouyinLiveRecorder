@@ -42,7 +42,8 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ReadWritePaths=@INSTALL_DIR@
-ProtectHome=true
+# 允许读取 /home 下的项目与工具；仅 ReadWritePaths 中的项目目录可写
+ProtectHome=read-only
 
 [Install]
 WantedBy=multi-user.target

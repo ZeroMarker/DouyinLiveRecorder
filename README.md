@@ -174,11 +174,12 @@ docker compose up -d
 **方式四：systemd 服务（服务器长期值守推荐）**
 
 ```bash
-# 一键安装（自动安装 ffmpeg/nodejs、注册开机自启，服务以 ubuntu 用户运行）
+# 在当前项目目录直接部署（不复制代码，服务以 ubuntu 用户运行）
+# 自动安装 ffmpeg/nodejs、注册开机自启
 # 本机 8000 已被其他服务占用，因此使用 8001
 sudo ./deploy/install.sh --port 8001
 
-# 可选参数
+# 可选：复制到独立安装目录
 sudo ./deploy/install.sh --port 9000 --install-dir /opt/DouyinLiveRecorder --user ubuntu
 
 # 查看状态 / 日志 / 重启
@@ -186,8 +187,8 @@ systemctl status douyinliverecorder
 journalctl -u douyinliverecorder -f
 systemctl restart douyinliverecorder
 
-# 卸载（--purge 同时删除安装目录与数据）
-sudo ./deploy/install.sh --uninstall --purge
+# 卸载服务，保留源码、配置与录制文件
+sudo ./deploy/install.sh --uninstall
 ```
 
 **Caddy 反向代理**
@@ -220,7 +221,7 @@ your-domain.example {
 
 要点：
 
-- **哈希取自源码目录**，清单描述的是"源码应该长什么样"。因此安装后的校验是真实比对：安装目录内容与源码不一致 → `skew`；源码中已删除、安装目录里仍存在的文件 → `extra`（如果反过来从安装目录自身生成清单，比对必然通过，残留文件会被"洗白"）。
+- **哈希取自源码目录**。直接部署记录当前版本快照，用于发现部署后的代码改动；独立复制部署中，清单描述的是"源码应该长什么样"。因此安装后的校验是真实比对：安装目录内容与源码不一致 → `skew`；源码中已删除、安装目录里仍存在的文件 → `extra`（如果反过来从安装目录自身生成清单，比对必然通过，残留文件会被"洗白"）。
 - **只覆盖本项目代码**：清单记录项目条目（源码顶层目录的条目），`config/`、`downloads/`、`logs/`、`backup_config/`、`.venv/`、`ffmpeg/` 等运行数据，以及运维自己放进安装目录的目录/文件，都不参与校验、也不会被安装脚本删除（安装时会提示保留了什么）。
 - 清单里还会记录 `source`、`commit`、`branch`、`dirty`，便于事后定位安装自哪个版本。
 
@@ -233,30 +234,34 @@ your-domain.example {
 
 `verify` 退出码：`0` 一致、`1` 混装/无法校验、`2` 无清单、`3` 存在清单外文件（提示码，`--strict` 时按 `1` 处理）。
 
-运维文件放哪里：
+独立复制部署时，运维文件放哪里：
 
 - **安装目录顶层的文件**（如 `.env`、`start.sh`）与 **`config/`、`downloads/`、`logs/`、`backup_config/` 等运行数据**：不参与校验，升级时原样保留。
 - **项目目录内部的文件**（如 `webui/caddy.conf`）：项目目录是整体替换的，升级时会被删除（因为无法把它与"上一版残留的代码文件"可靠区分，而残留文件正是要清掉的）。安装脚本会在删除前列出这些文件提醒你搬走。
 
-因此安装脚本默认**拒绝**从含未提交改动的源码目录安装（那种状态下安装内容不对应任何提交，正是混装的来源）；确认无误可加 `--allow-dirty`，清单会记录 `dirty=true`，启动日志与 WebUI 会持续提示该部署含本地改动。安装脚本还会先清掉安装目录里属于本项目的旧代码再复制，因此源码中已删除的文件不会残留。安装目录也会先做常规性检查（参数见下表），避免 `--install-dir` 笔误指向 `/home`、`/tmp` 之类目录，或把安装目录指向符号链接。
+因此安装脚本默认**拒绝**从含未提交改动的源码目录安装（那种状态下安装内容不对应任何提交，正是混装的来源）；确认无误可加 `--allow-dirty`，清单会记录 `dirty=true`，启动日志与 WebUI 会持续提示该部署含本地改动。独立复制部署时，安装脚本会先清掉安装目录里属于本项目的旧代码再复制，因此源码中已删除的文件不会残留。安装目录也会先做常规性检查（参数见下表），避免 `--install-dir` 笔误指向 `/home`、`/tmp` 之类目录，或把安装目录指向符号链接。
 
-**不能就地安装**：安装会先清理旧代码再复制，源码目录与安装目录相同（或互相包含）时会互相删除，脚本会直接拒绝。升级请在源码目录执行；`--check` 是只读的，可以在安装目录内执行。
+**默认在项目目录直接部署**：源码目录与安装目录相同时，跳过代码清理、复制和源码属主修改，保留 Git 仓库。服务使用 `ProtectHome=read-only`，并通过 `ReadWritePaths` 允许写项目目录。修改代码后需重新执行升级命令，刷新部署清单并重启服务。配置与任务是运行数据，不影响未提交代码检查。
+
+通过 `--install-dir /opt/DouyinLiveRecorder` 仍可使用独立复制部署：清理旧代码后复制源码，拒绝源码与安装目录互相包含。默认路径已改为当前项目目录，维护旧 `/opt` 部署时请显式传入 `--install-dir`。`--check` 是只读操作；`--purge` 禁止删除当前项目或 Git 仓库。
 
 | 参数 | 说明 |
 |---|---|
 | `--upgrade` | 升级：跳过系统依赖与用户检查，复用已有虚拟环境 |
 | `--check` | 只校验安装目录与清单是否一致（不需要 root）；`extra` 返回 3，不一致返回非 0 |
 | `--allow-dirty` | 允许从含未提交改动的源码目录安装 |
+| `--install-dir DIR` | 默认当前项目目录；也可指定独立复制部署目录 |
 | `--force-dir` | 跳过安装目录的常规性检查（`--install-dir` 指向非默认路径时需要） |
 
 ```bash
-# 升级（复用虚拟环境，保留配置与已录制文件）；在源码目录执行
+# 升级（复用虚拟环境，保留配置与已录制文件）；在项目目录执行
+git pull --ff-only
 sudo ./deploy/install.sh --upgrade --port 8001
 
 # 只校验安装目录与清单是否一致
 ./deploy/install.sh --check
 # 或直接调用模块：make 生成清单 / verify 比对 / prune 列出可清理条目与将被删除的运维文件
-python3 -m src.deploy_check verify --dir /opt/DouyinLiveRecorder
+python3 -m src.deploy_check verify --dir .
 ```
 
 常用 API：

@@ -88,6 +88,7 @@ node/
 node-v*.zip
 # 安装清单（由 deploy/install.sh 写入安装目录；安装目录=源码目录时不应提交）
 .deploy-manifest.json
+.deploy-installed
 
 # pyenv
 #   For a library or package, you might want to ignore these files since the code is

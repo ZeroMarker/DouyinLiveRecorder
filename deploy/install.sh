@@ -6,11 +6,11 @@
 #   sudo ./deploy/install.sh [选项]
 #
 # 选项:
-#   --install-dir DIR   安装目录（默认 /opt/DouyinLiveRecorder）
+#   --install-dir DIR   安装目录（默认当前项目目录；指定其他目录时复制部署）
 #   --port PORT         WebUI 端口（默认 8000）
 #   --user USER         服务运行用户（默认 ubuntu）
 #   --no-venv           使用系统 python3 而非创建虚拟环境
-#   --no-systemd        仅安装文件，不注册/启动 systemd 服务
+#   --no-systemd        仅准备部署，不注册/启动 systemd 服务
 #   --upgrade           升级模式：跳过系统依赖与服务用户检查，复用已有虚拟环境
 #   --allow-dirty       允许从含未提交改动的源码目录安装（默认拒绝，见下）
 #   --force-dir         跳过安装目录的常规性检查（仅当 --install-dir 指向非默认路径时需要）
@@ -24,7 +24,8 @@
 # ============================================================================
 set -euo pipefail
 
-INSTALL_DIR="/opt/DouyinLiveRecorder"
+INSTALL_DIR=""
+IN_PLACE=0
 WEBUI_PORT="8000"
 SVC_USER="ubuntu"
 USE_VENV=1
@@ -56,6 +57,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+INSTALL_DIR="${INSTALL_DIR:-$SRC_DIR}"
+if [[ "$(realpath -m -- "$INSTALL_DIR")" == "$(realpath -m -- "$SRC_DIR")" ]]; then
+  IN_PLACE=1
+fi
+
 log()  { echo -e "\033[1;32m[install]\033[0m $*"; }
 warn() { echo -e "\033[1;33m[warn]\033[0m $*"; }
 die()  { echo -e "\033[1;31m[error]\033[0m $*" >&2; exit 1; }
@@ -86,15 +92,23 @@ validate_install_dir() {
   if [[ -z "$parent" || ! -d "$parent" ]]; then
     die "安装目录的父目录不存在: $(dirname -- "$dir")（请先创建，例如 sudo mkdir -p $(dirname -- "$dir")）"
   fi
-  dir="$parent/$base"
+  dir="${parent%/}/$base"
+  if [[ "$base" == "/" ]]; then dir="/"; fi
   [[ "$dir" != "/" ]] || die "安装目录不能是根目录"
   [[ ! -L "$dir" ]] || die "安装目录 $dir 是符号链接：链接可在校验后被改写指向别处，请改用真实目录"
+  # 当前项目直接部署：不清理、不复制、不递归修改源码属主。
+  if [[ "$IN_PLACE" == "1" && "$dir" == "$(realpath -m -- "$SRC_DIR")" ]]; then
+    [[ -f "$dir/main.py" && -f "$dir/requirements.txt" && -f "$dir/src/deploy_check.py" ]] || \
+      die "项目目录不完整，需要 main.py、requirements.txt 和 src/deploy_check.py"
+    INSTALL_DIR="$dir"
+    return
+  fi
   case "$dir" in
     /|/home|/home/*|/root|/root/*|/usr|/usr/*|/etc|/etc/*|/var|/var/*|/opt|/boot|/boot/*|/srv|/srv/*|/tmp|/tmp/*|/mnt|/mnt/*|/media|/media/*|/dev|/dev/*|/proc|/proc/*|/sys|/sys/*|/run|/run/*)
-      die "拒绝把 $dir 作为安装目录：安装会删除其中的旧代码条目并执行 chown -R，必须使用专属子目录（默认 /opt/DouyinLiveRecorder）" ;;
+      die "拒绝把 $dir 作为安装目录：安装会删除其中的旧代码条目并执行 chown -R，复制部署必须使用专属子目录（例如 /opt/DouyinLiveRecorder）" ;;
   esac
   [[ "$base" == "DouyinLiveRecorder" || "$FORCE_DIR" == "1" ]] || \
-    die "安装目录名 '$base' 不像本项目目录（默认 /opt/DouyinLiveRecorder）；确认无误请加 --force-dir"
+    die "安装目录名 '$base' 不像本项目目录（例如 /opt/DouyinLiveRecorder）；确认无误请加 --force-dir"
   if [[ -d "$dir" && ! -f "$dir/main.py" && ! -f "$dir/.deploy-manifest.json" && "$FORCE_DIR" != "1" ]]; then
     die "$dir 已存在但不是本项目安装目录（缺少 main.py）；确认无误请加 --force-dir"
   fi
@@ -102,18 +116,13 @@ validate_install_dir() {
   INSTALL_DIR="$dir"
 }
 
-# 源码目录与安装目录不得相同或互相包含。
-#
-# 安装是"先删旧代码、再从源码复制"，两者相同时第一步就会把源码删掉（实测会删掉
-# main.py、requirements.txt、src/ 等，然后无源码可复制，安装目录只剩运行数据）。
-# 注意 systemd 部署下 install.sh 本身就在安装目录里（$INSTALL_DIR/deploy/install.sh），
-# 因此"在安装目录里重跑脚本升级"这条路径必须被明确拒绝，而不是"尽力而为"。
+# 复制部署时源码和目标不得互相包含；同目录走直接部署，跳过清理/复制。
 validate_source_isolation() {
   local src inst
   src="$(realpath -m -- "$SRC_DIR")"
   inst="$(realpath -m -- "$INSTALL_DIR")"
   if [[ "$src" == "$inst" ]]; then
-    die "源码目录与安装目录相同（$src）：安装会先清理旧代码再复制，就地安装会互相删除。请在源码副本目录执行，或改用 --install-dir 指向另一个目录"
+    return
   fi
   case "$src/" in
     "$inst"/*) die "源码目录位于安装目录内部（$src）：清理阶段会删除源码。请把源码放在安装目录之外" ;;
@@ -145,6 +154,9 @@ fi
 # 卸载
 # ---------------------------------------------------------------------------
 if [[ "$UNINSTALL" == "1" ]]; then
+  if [[ "$PURGE" == "1" && ( "$IN_PLACE" == "1" || -e "$INSTALL_DIR/.git" ) ]]; then
+    die "拒绝 --purge 删除项目源码仓库；请使用 --uninstall 保留源码和数据"
+  fi
   if [[ "$PURGE" == "1" ]]; then validate_install_dir "$INSTALL_DIR"; fi
   log "停止并移除服务 $SERVICE_NAME ..."
   if systemctl list-unit-files | grep -q "^${SERVICE_NAME}.service"; then
@@ -153,8 +165,8 @@ if [[ "$UNINSTALL" == "1" ]]; then
     rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
     systemctl daemon-reload
   fi
-  if [[ "$SVC_USER" == "ubuntu" ]]; then
-    warn "保留登录用户 ubuntu，仅移除服务（不删除用户）"
+  if [[ "$IN_PLACE" == "1" || "$SVC_USER" == "ubuntu" ]]; then
+    warn "保留服务用户 $SVC_USER，仅移除服务（不删除用户及其主目录）"
   elif id "$SVC_USER" &>/dev/null; then
     userdel -r "$SVC_USER" 2>/dev/null || userdel "$SVC_USER"
     log "已删除用户 $SVC_USER"
@@ -181,7 +193,8 @@ SRC_DIRTY="false"
 if command -v git &>/dev/null && git -C "$SRC_DIR" rev-parse --git-dir &>/dev/null; then
   SRC_COMMIT="$(git -C "$SRC_DIR" rev-parse HEAD 2>/dev/null || true)"
   SRC_BRANCH="$(git -C "$SRC_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-  DIRTY_FILES="$(git -C "$SRC_DIR" status --porcelain 2>/dev/null || true)"
+  # 配置和任务属于运行数据，直接部署时会正常产生本地改动。
+  DIRTY_FILES="$(git -C "$SRC_DIR" status --porcelain -- . ':(exclude)config/' 2>/dev/null || true)"
   if [[ -n "$DIRTY_FILES" ]]; then
     SRC_DIRTY="true"
     warn "源码目录有未提交改动，安装内容不对应任何提交（跨版本混装的来源）："
@@ -271,72 +284,76 @@ fi
 # ---------------------------------------------------------------------------
 # 跳过名单同样先落文件再判退出码：< <(...) 吞掉失败会让名单变空，
 # 那样连 config/ downloads/ 都会被当成代码复制（覆盖安装目录里的任务配置）。
-EXCLUDES_OUT="$(mktemp)"
-if ! py_deploy_check excludes > "$EXCLUDES_OUT"; then
-  rm -f "$EXCLUDES_OUT"
-  die "读取跳过目录名单失败（src/deploy_check.py excludes 退出异常），已中止安装"
-fi
-mapfile -t CODE_EXCLUDES < "$EXCLUDES_OUT"
-rm -f "$EXCLUDES_OUT"
-if [[ "${#CODE_EXCLUDES[@]}" -eq 0 ]]; then
-  die "跳过目录名单为空，已中止安装（避免把 config/ downloads/ 等运行数据当作代码覆盖）"
-fi
-
-# 顶层条目是否属于"运行数据/环境"（不复制、不删除）
-is_excluded() {
-  local name="$1" entry
-  for entry in ${CODE_EXCLUDES[@]+"${CODE_EXCLUDES[@]}"}; do
-    if [[ "$name" == "$entry" ]]; then return 0; fi
-  done
-  return 1
-}
-
-log "同步代码到 $INSTALL_DIR ..."
-mkdir -p "$INSTALL_DIR"
-
-# 删除上一版安装的本项目代码（含源码中已删除的文件）；运维自建条目由 prune 保留并提示。
-# 输出先落临时文件再判断退出码：进程替换 < <(...) 会吞掉子命令的失败，
-# prune 一旦崩溃就会静默"什么都不删"，留下旧代码并让后续校验看似通过。
-PRUNE_OUT="$(mktemp)"
-PRUNE_RC=0
-py_deploy_check prune --dir "$INSTALL_DIR" --source "$SRC_DIR" > "$PRUNE_OUT" || PRUNE_RC=$?
-if [[ "$PRUNE_RC" -eq 3 ]]; then
-  rm -f "$PRUNE_OUT"
-  die "安装目录存在名字不安全的条目（含换行/控制字符，见上方列表），已中止安装"
-elif [[ "$PRUNE_RC" -ne 0 ]]; then
-  rm -f "$PRUNE_OUT"
-  die "计算待清理条目失败（src/deploy_check.py prune 退出码 $PRUNE_RC），已中止安装以免留下混合版本"
-fi
-REMOVED=0
-while IFS= read -r name; do
-  if [[ -n "$name" ]]; then
-    # 逐层校验：名字必须是单一、安全的路径组件，且解析后仍严格位于安装目录内。
-    # （prune 已对含换行/控制字符的名字退出非 0，这里是第二层防护，避免任何
-    #  拆分后的片段被拼进 rm -rf 目标。）
-    case "$name" in
-      */*|.|..|*[![:print:]]*)
-        rm -f "$PRUNE_OUT"
-        die "待清理条目名不安全，已中止安装: $(printf '%q' "$name")" ;;
-    esac
-    target="$(realpath -m -- "${INSTALL_DIR:?}/$name")"
-    if [[ "$target" != "$INSTALL_DIR"/* ]]; then
-      rm -f "$PRUNE_OUT"
-      die "待清理条目不在安装目录内，已中止安装: $target"
-    fi
-    rm -rf "$target"
-    REMOVED=$((REMOVED + 1))
+if [[ "$IN_PLACE" == "0" ]]; then
+  EXCLUDES_OUT="$(mktemp)"
+  if ! py_deploy_check excludes > "$EXCLUDES_OUT"; then
+    rm -f "$EXCLUDES_OUT"
+    die "读取跳过目录名单失败（src/deploy_check.py excludes 退出异常），已中止安装"
   fi
-done < "$PRUNE_OUT"
-rm -f "$PRUNE_OUT"
-log "已清理 $REMOVED 个旧代码条目"
+  mapfile -t CODE_EXCLUDES < "$EXCLUDES_OUT"
+  rm -f "$EXCLUDES_OUT"
+  if [[ "${#CODE_EXCLUDES[@]}" -eq 0 ]]; then
+    die "跳过目录名单为空，已中止安装（避免把 config/ downloads/ 等运行数据当作代码覆盖）"
+  fi
 
-shopt -s dotglob nullglob
-for path in "$SRC_DIR"/*; do
-  name="$(basename "$path")"
-  if is_excluded "$name"; then continue; fi
-  cp -a "$path" "$INSTALL_DIR"/
-done
-shopt -u dotglob nullglob
+  # 顶层条目是否属于"运行数据/环境"（不复制、不删除）
+  is_excluded() {
+    local name="$1" entry
+    for entry in ${CODE_EXCLUDES[@]+"${CODE_EXCLUDES[@]}"}; do
+      if [[ "$name" == "$entry" ]]; then return 0; fi
+    done
+    return 1
+  }
+
+  log "同步代码到 $INSTALL_DIR ..."
+  mkdir -p "$INSTALL_DIR"
+
+  # 删除上一版安装的本项目代码（含源码中已删除的文件）；运维自建条目由 prune 保留并提示。
+  # 输出先落临时文件再判断退出码：进程替换 < <(...) 会吞掉子命令的失败，
+  # prune 一旦崩溃就会静默"什么都不删"，留下旧代码并让后续校验看似通过。
+  PRUNE_OUT="$(mktemp)"
+  PRUNE_RC=0
+  py_deploy_check prune --dir "$INSTALL_DIR" --source "$SRC_DIR" > "$PRUNE_OUT" || PRUNE_RC=$?
+  if [[ "$PRUNE_RC" -eq 3 ]]; then
+    rm -f "$PRUNE_OUT"
+    die "安装目录存在名字不安全的条目（含换行/控制字符，见上方列表），已中止安装"
+  elif [[ "$PRUNE_RC" -ne 0 ]]; then
+    rm -f "$PRUNE_OUT"
+    die "计算待清理条目失败（src/deploy_check.py prune 退出码 $PRUNE_RC），已中止安装以免留下混合版本"
+  fi
+  REMOVED=0
+  while IFS= read -r name; do
+    if [[ -n "$name" ]]; then
+      # 逐层校验：名字必须是单一、安全的路径组件，且解析后仍严格位于安装目录内。
+      # （prune 已对含换行/控制字符的名字退出非 0，这里是第二层防护，避免任何
+      #  拆分后的片段被拼进 rm -rf 目标。）
+      case "$name" in
+        */*|.|..|*[![:print:]]*)
+          rm -f "$PRUNE_OUT"
+          die "待清理条目名不安全，已中止安装: $(printf '%q' "$name")" ;;
+      esac
+      target="$(realpath -m -- "${INSTALL_DIR:?}/$name")"
+      if [[ "$target" != "$INSTALL_DIR"/* ]]; then
+        rm -f "$PRUNE_OUT"
+        die "待清理条目不在安装目录内，已中止安装: $target"
+      fi
+      rm -rf "$target"
+      REMOVED=$((REMOVED + 1))
+    fi
+  done < "$PRUNE_OUT"
+  rm -f "$PRUNE_OUT"
+  log "已清理 $REMOVED 个旧代码条目"
+
+  shopt -s dotglob nullglob
+  for path in "$SRC_DIR"/*; do
+    name="$(basename "$path")"
+    if is_excluded "$name"; then continue; fi
+    cp -a "$path" "$INSTALL_DIR"/
+  done
+  shopt -u dotglob nullglob
+else
+  log "直接使用项目目录：跳过代码清理与复制"
+fi
 
 mkdir -p "$INSTALL_DIR"/downloads "$INSTALL_DIR"/logs "$INSTALL_DIR"/backup_config "$INSTALL_DIR"/config
 # 首次安装（或配置缺失）时补默认配置；已有配置一律保留
@@ -349,13 +366,12 @@ if [[ ! -f "$INSTALL_DIR/config/config.ini" ]]; then
   log "已初始化 config/config.ini"
 fi
 [[ -f "$INSTALL_DIR/config/URL_config.ini" ]] || : > "$INSTALL_DIR/config/URL_config.ini"
-log "代码已同步（保留 config/ downloads/ logs/ backup_config/ .venv/ 等运行数据）"
+log "代码已就绪（保留 config/ downloads/ logs/ backup_config/ .venv/ 等运行数据）"
 
 # ---------------------------------------------------------------------------
 # 4. Python 环境
 # ---------------------------------------------------------------------------
-# 优先选择系统安装的 Python（/usr/bin），避免单元文件 ProtectHome=true
-# 屏蔽 /root、/home 下的解释器（如 mise 管理的 python）导致服务启动失败
+# 优先选择系统安装的 Python（/usr/bin），减少对个人工具链路径的依赖
 if [[ -x /usr/bin/python3 ]]; then
   BASE_PYTHON=/usr/bin/python3
 else
@@ -380,7 +396,8 @@ log "Python 依赖安装完成 ($PYTHON_BIN)"
 # ---------------------------------------------------------------------------
 # 5. 生成安装清单并校验
 #
-# 清单记录每个代码文件的 sha256，且哈希取自**源码目录**（--source）：只有描述
+# 直接部署时记录当前工作区的部署快照，供后续检测文件改动。
+# 复制部署时清单记录每个代码文件的 sha256，且哈希取自**源码目录**（--source）：只有描述
 # "源码应该长什么样"，安装后比对才有意义——如果从安装目录自身生成，比对必然通过，
 # 清理失败的残留会被写进清单"洗白"。校验通过即说明安装内容与源码逐字节一致；
 # 残留文件会以 extra 形式暴露。服务启动与 WebUI 加载时会再比对一次，用于发现
@@ -412,7 +429,13 @@ py_deploy_check sentinel --dir "$INSTALL_DIR" --source "$SRC_DIR" \
 # 删除/复制之后再确认一次：中间任何一步都不该让 INSTALL_DIR 变成别的目标
 [[ "$(readlink -f -- "$INSTALL_DIR")" == "$INSTALL_DIR" ]] || \
   die "安装目录在校验后发生了变化（$INSTALL_DIR），已中止"
-chown -R "$SVC_USER:$SVC_USER" "$INSTALL_DIR"
+if [[ "$IN_PLACE" == "0" ]]; then
+  chown -R "$SVC_USER:$SVC_USER" "$INSTALL_DIR"
+else
+  # 保留 Git 工作区属主，只确保服务可以写运行数据与部署清单。
+  chown -R "$SVC_USER:$SVC_USER" "$INSTALL_DIR"/{config,downloads,logs,backup_config}
+  chown "$SVC_USER:$SVC_USER" "$INSTALL_DIR/.deploy-manifest.json" "$INSTALL_DIR/.deploy-installed"
+fi
 
 if [[ "$USE_SYSTEMD" == "0" ]]; then
   log "已跳过 systemd 注册（--no-systemd）。可直接运行: sudo -u $SVC_USER $PYTHON_BIN $INSTALL_DIR/main.py --web"
@@ -459,12 +482,12 @@ cat <<EOF
    systemctl stop $SERVICE_NAME        停止服务
  升级（保留 config/downloads 数据）:
    在源码目录 $SRC_DIR 执行:
-   sudo $SRC_DIR/deploy/install.sh --upgrade --port $WEBUI_PORT
-   ※ 不能在安装目录内就地升级：安装会先清理旧代码再复制，源码与安装目录相同时
-     会把源码一起删掉，脚本会直接拒绝这种用法。
+   sudo $SRC_DIR/deploy/install.sh --upgrade --install-dir $INSTALL_DIR --port $WEBUI_PORT --user $SVC_USER
+   项目目录直接部署时，先 git pull --ff-only，再执行升级命令刷新依赖和清单。
  校验安装目录与清单是否一致（可在安装目录内执行，只读）:
-   sudo $INSTALL_DIR/deploy/install.sh --check
+   sudo $SRC_DIR/deploy/install.sh --check --install-dir $INSTALL_DIR
  卸载:
-   sudo $SRC_DIR/deploy/install.sh --uninstall --purge
+   sudo $SRC_DIR/deploy/install.sh --uninstall --install-dir $INSTALL_DIR --user $SVC_USER
+   项目源码目录禁止 --purge；独立复制部署可加 --purge 删除安装目录与数据。
 =====================================================================
 EOF
